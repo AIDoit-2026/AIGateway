@@ -24,5 +24,6 @@ docker/.env
 
 # Local planning docs
 docs/plan/
-docs/plans/
+# sync plans to the cloud
+# docs/plans/
 .ace-tool/
