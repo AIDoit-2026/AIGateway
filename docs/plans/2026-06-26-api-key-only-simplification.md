@@ -157,31 +157,31 @@
 
 ## 阶段 6：文档和截图清理
 
-- [ ] 更新 `docs/getting-started.md`。
-  - [ ] 删除账号管理流程。
-  - [ ] 删除账号令牌同步流程。
-  - [ ] 删除签到相关说明。
-  - [ ] 删除 OAuth 作为首选连接路径的说明，或标注已下线。
-  - [ ] 首次使用流程改为：添加站点 -> 添加 API Key 连接 -> 路由管理 -> 验证代理。
-- [ ] 更新 `docs/upstream-integration.md`。
-  - [ ] 删除用户名密码、Session/Cookie、账号令牌管理作为推荐路径的描述。
-  - [ ] 将上游接入统一收敛到 Base URL + API Key。
-  - [ ] 删除 OAuth 连接接入章节，或标注为已移除。
-- [ ] 更新 `docs/oauth.md`。
-  - [ ] 删除该页面或改为历史说明。
-  - [ ] 同步移除 VitePress 导航引用。
-- [ ] 更新 `docs/configuration.md`。
-  - [ ] 删除 OAuth client 覆盖、签到计划等不再对外使用的说明。
-- [ ] 更新 `docs/client-integration.md`。
-  - [ ] 确认下游调用文档仍然只讲 `PROXY_TOKEN` 或下游密钥。
-- [ ] 更新 `docs/management-api.md`。
-  - [ ] 管理 API 示例改成 API Key only。
-  - [ ] 将账号登录、账号令牌、OAuth 接口标为废弃或移除。
-- [ ] 更新 `docs/operations.md` 和 `docs/faq.md`。
-  - [ ] 删除签到失败、余额刷新失败、Session 过期重绑等排障内容。
-- [ ] 更新截图。
-  - [ ] 替换连接管理截图。
-  - [ ] 删除账号令牌、OAuth、签到相关截图引用。
+- [x] 更新 `docs/getting-started.md`。
+  - [x] 删除账号管理流程。
+  - [x] 删除账号令牌同步流程。
+  - [x] 删除签到相关说明。
+  - [x] 删除 OAuth 作为首选连接路径的说明，或标注已下线。
+  - [x] 首次使用流程改为：添加站点 -> 添加 API Key 连接 -> 路由管理 -> 验证代理。
+- [x] 更新 `docs/upstream-integration.md`。
+  - [x] 删除用户名密码、Session/Cookie、账号令牌管理作为推荐路径的描述。
+  - [x] 将上游接入统一收敛到 Base URL + API Key。
+  - [x] 删除 OAuth 连接接入章节，或标注为已移除。
+- [x] 更新 `docs/oauth.md`。
+  - [x] 删除该页面或改为历史说明。
+  - [x] 同步移除 VitePress 导航引用。
+- [x] 更新 `docs/configuration.md`。
+  - [x] 删除 OAuth client 覆盖、签到计划等不再对外使用的说明。
+- [x] 更新 `docs/client-integration.md`。
+  - [x] 确认下游调用文档仍然只讲 `PROXY_TOKEN` 或下游密钥。
+- [x] 更新 `docs/management-api.md`。
+  - [x] 管理 API 示例改成 API Key only。
+  - [x] 将账号登录、账号令牌、OAuth 接口标为废弃或移除。
+- [x] 更新 `docs/operations.md` 和 `docs/faq.md`。
+  - [x] 删除签到失败、余额刷新失败、Session 过期重绑等排障内容。
+- [x] 更新截图。
+  - [x] 替换连接管理截图。
+  - [x] 删除账号令牌、OAuth、签到相关截图引用。
 
 ## 阶段 7：代理热路径性能优化
 
