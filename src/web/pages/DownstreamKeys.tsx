@@ -518,15 +518,11 @@ export default function DownstreamKeys() {
     if (exclusionSourceLoading || exclusionSourceLoaded) return;
     setExclusionSourceLoading(true);
     try {
-      const [accountsSnapshotRes, tokensRes] = await Promise.all([
-        api.getAccountsSnapshot(),
-        api.getAccountTokens(),
-      ]);
+      const accountsSnapshotRes = await api.getAccountsSnapshot();
 
       const accountRows = Array.isArray(accountsSnapshotRes?.accounts)
         ? accountsSnapshotRes.accounts
         : [];
-      const tokenRows = Array.isArray(tokensRes) ? tokensRes : [];
 
       const siteMap = new Map<number, { siteId: number; siteName: string; accountIds: Set<number> }>();
       for (const account of accountRows) {
@@ -558,24 +554,9 @@ export default function DownstreamKeys() {
           key: `default_api_key:${siteId}:${accountId}`,
           ref: { kind: 'default_api_key', siteId: Math.trunc(siteId), accountId: Math.trunc(accountId) },
           siteName: String(account?.site?.name || `站点 ${siteId}`).trim() || `站点 ${siteId}`,
-          accountName: String(account?.username || `账号 ${accountId}`).trim() || `账号 ${accountId}`,
+          accountName: String(account?.username || `连接 ${accountId}`).trim() || `连接 ${accountId}`,
           label: '默认 API Key',
-          detail: `使用账号默认 API Key (${apiToken.slice(0, 6)}...)`,
-        });
-      }
-
-      for (const token of tokenRows) {
-        const siteId = Number(token?.site?.id);
-        const accountId = Number(token?.account?.id ?? token?.accountId);
-        const tokenId = Number(token?.id);
-        if (!Number.isFinite(siteId) || siteId <= 0 || !Number.isFinite(accountId) || accountId <= 0 || !Number.isFinite(tokenId) || tokenId <= 0) continue;
-        credentialOptions.push({
-          key: `account_token:${siteId}:${accountId}:${tokenId}`,
-          ref: { kind: 'account_token', siteId: Math.trunc(siteId), accountId: Math.trunc(accountId), tokenId: Math.trunc(tokenId) },
-          siteName: String(token?.site?.name || `站点 ${siteId}`).trim() || `站点 ${siteId}`,
-          accountName: String(token?.account?.username || `账号 ${accountId}`).trim() || `账号 ${accountId}`,
-          label: String(token?.name || `token-${tokenId}`).trim() || `token-${tokenId}`,
-          detail: String(token?.tokenGroup || 'default').trim() || 'default',
+          detail: `使用连接默认 API Key (${apiToken.slice(0, 6)}...)`,
         });
       }
 
@@ -589,7 +570,7 @@ export default function DownstreamKeys() {
       );
       setExclusionSourceLoaded(true);
     } catch (err: any) {
-      toast.error(err?.message || '加载可排除站点与令牌失败');
+      toast.error(err?.message || '加载可排除站点与连接失败');
     } finally {
       setExclusionSourceLoading(false);
     }

@@ -47,15 +47,15 @@
 
 ## 阶段 2：前端 API 客户端收敛
 
-- [ ] 修改 `src/web/api.ts`。
-  - [ ] 保留 API Key 创建、更新、删除、模型检查相关调用。
-  - [ ] 移除 UI 不再使用的 `loginAccount` 调用。
-  - [ ] 移除 UI 不再使用的 `rebindAccountSession` 调用。
-  - [ ] 移除 UI 不再使用的 `getAccountTokens` / `addAccountToken` / `syncAccountTokens` / `syncAllAccountTokens` 等调用。
-  - [ ] 移除 UI 不再使用的 OAuth 调用。
-  - [ ] 移除 UI 不再使用的签到调用。
-- [ ] 保留类型时要确认没有被其他页面复用。
-- [ ] 如果后端兼容 API 暂时保留，前端可先只移除调用，不必同步删除服务端路由。
+- [x] 修改 `src/web/api.ts`。
+  - [x] 保留 API Key 创建、更新、删除、模型检查相关调用。
+  - [x] 移除 UI 不再使用的 `loginAccount` 调用。
+  - [x] 移除 UI 不再使用的 `rebindAccountSession` 调用。
+  - [x] 移除 UI 不再使用的 `getAccountTokens` / `addAccountToken` / `syncAccountTokens` / `syncAllAccountTokens` 等调用。
+  - [x] 移除 UI 不再使用的 OAuth 调用。
+  - [x] 移除 UI 不再使用的签到调用。
+- [x] 保留类型时要确认没有被其他页面复用。
+- [x] 如果后端兼容 API 暂时保留，前端可先只移除调用，不必同步删除服务端路由。
 
 ## 阶段 3：后端行为限制和兼容
 

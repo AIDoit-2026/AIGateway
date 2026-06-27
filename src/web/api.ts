@@ -590,156 +590,6 @@ export type ProxyDebugTracesResponse = {
   items: ProxyDebugTraceListItem[];
 };
 
-export type OAuthProviderInfo = {
-  provider: string;
-  label: string;
-  platform: string;
-  enabled: boolean;
-  loginType: "oauth";
-  requiresProjectId: boolean;
-  supportsDirectAccountRouting: boolean;
-  supportsCloudValidation: boolean;
-  supportsNativeProxy: boolean;
-};
-
-export type OAuthProvidersResponse = {
-  providers: OAuthProviderInfo[];
-  defaults?: {
-    systemProxyConfigured?: boolean;
-  };
-};
-
-export type OAuthRouteUnitStrategy = "round_robin" | "stick_until_unavailable";
-
-export type OAuthRouteUnitSummary = {
-  id?: number;
-  routeUnitId?: number;
-  name: string;
-  strategy: OAuthRouteUnitStrategy;
-  memberCount: number;
-};
-
-export type OAuthRouteParticipation =
-  | {
-      kind: "single";
-    }
-  | ({
-      kind: "route_unit";
-    } & OAuthRouteUnitSummary);
-
-export type OAuthStartInstructions = {
-  redirectUri: string;
-  callbackPort: number;
-  callbackPath: string;
-  manualCallbackDelayMs: number;
-  sshTunnelCommand?: string;
-  sshTunnelKeyCommand?: string;
-};
-
-export type OAuthStartResponse = {
-  provider: string;
-  state: string;
-  authorizationUrl: string;
-  instructions: OAuthStartInstructions;
-};
-
-export type OAuthSessionInfo = {
-  provider: string;
-  state: string;
-  status: "pending" | "success" | "error";
-  accountId?: number;
-  siteId?: number;
-  error?: string;
-};
-
-export type OAuthQuotaWindowInfo = {
-  supported: boolean;
-  limit?: number | null;
-  used?: number | null;
-  remaining?: number | null;
-  resetAt?: string | null;
-  message?: string | null;
-};
-
-export type OAuthQuotaInfo = {
-  status: "supported" | "unsupported" | "error";
-  source: "official" | "reverse_engineered";
-  lastSyncAt?: string | null;
-  lastError?: string | null;
-  providerMessage?: string | null;
-  subscription?: {
-    planType?: string | null;
-    activeStart?: string | null;
-    activeUntil?: string | null;
-  } | null;
-  windows: {
-    fiveHour: OAuthQuotaWindowInfo;
-    sevenDay: OAuthQuotaWindowInfo;
-  };
-  lastLimitResetAt?: string | null;
-};
-
-export type OAuthConnectionInfo = {
-  accountId: number;
-  siteId: number;
-  provider: string;
-  username?: string | null;
-  email?: string | null;
-  accountKey?: string | null;
-  planType?: string | null;
-  projectId?: string | null;
-  modelCount: number;
-  modelsPreview: string[];
-  status: "healthy" | "abnormal";
-  quota?: OAuthQuotaInfo | null;
-  routeChannelCount?: number;
-  lastModelSyncAt?: string | null;
-  lastModelSyncError?: string | null;
-  proxyUrl?: string | null;
-  useSystemProxy?: boolean;
-  routeUnit?: OAuthRouteUnitSummary | null;
-  routeParticipation?: OAuthRouteParticipation | null;
-  site?: { id: number; name: string; url: string; platform: string } | null;
-};
-
-export type OAuthConnectionsResponse = {
-  items: OAuthConnectionInfo[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-
-export type OAuthQuotaBatchRefreshResponse = {
-  success: boolean;
-  refreshed: number;
-  failed: number;
-  items: Array<{
-    accountId: number;
-    success: boolean;
-    quota?: OAuthQuotaInfo;
-    error?: string;
-  }>;
-};
-
-export type OAuthImportResponse = {
-  success: boolean;
-  imported: number;
-  skipped: number;
-  failed: number;
-  items: Array<{
-    name: string;
-    status: "imported" | "skipped" | "failed";
-    accountId?: number;
-    provider?: string;
-    message?: string;
-  }>;
-};
-
-export type OAuthRouteUnitMutationResponse = {
-  success: boolean;
-  routeUnit?: OAuthRouteUnitSummary;
-};
-
 export type DownstreamApiKeyTrendBucket = {
   startUtc: string | null;
   totalRequests: number;
@@ -808,15 +658,6 @@ export const api = {
     }>,
   addAccount: (data: any) =>
     request("/api/accounts", { method: "POST", body: JSON.stringify(data) }),
-  loginAccount: (data: {
-    siteId: number;
-    username: string;
-    password: string;
-  }) =>
-    request("/api/accounts/login", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
   verifyToken: (data: {
     siteId: number;
     accessToken: string;
@@ -827,19 +668,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  rebindAccountSession: (
-    id: number,
-    data: {
-      accessToken: string;
-      platformUserId?: number;
-      refreshToken?: string;
-      tokenExpiresAt?: number;
-    },
-  ) =>
-    request(`/api/accounts/${id}/rebind-session`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
   updateAccount: (id: number, data: any) =>
     request(`/api/accounts/${id}`, {
       method: "PUT",
@@ -847,76 +675,12 @@ export const api = {
     }),
   deleteAccount: (id: number) =>
     request(`/api/accounts/${id}`, { method: "DELETE" }),
-  batchUpdateAccounts: (data: any) =>
-    request("/api/accounts/batch", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  refreshBalance: (id: number) =>
-    request(`/api/accounts/${id}/balance`, { method: "POST" }),
   getAccountModels: (id: number) => request(`/api/accounts/${id}/models`),
   addAccountAvailableModels: (accountId: number, models: string[]) =>
     request(`/api/accounts/${accountId}/models/manual`, {
       method: "POST",
       body: JSON.stringify({ models }),
     }),
-  refreshAccountHealth: (data?: { accountId?: number; wait?: boolean }) =>
-    request("/api/accounts/health/refresh", {
-      method: "POST",
-      body: JSON.stringify(data || {}),
-      timeoutMs: data?.wait ? 150_000 : 30_000,
-    }),
-
-  // Account tokens
-  getAccountTokens: (accountId?: number) =>
-    request(`/api/account-tokens${accountId ? `?accountId=${accountId}` : ""}`),
-  addAccountToken: (data: any) =>
-    request("/api/account-tokens", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  updateAccountToken: (id: number, data: any) =>
-    request(`/api/account-tokens/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
-  deleteAccountToken: (id: number) =>
-    request(`/api/account-tokens/${id}`, { method: "DELETE" }),
-  batchUpdateAccountTokens: (data: any) =>
-    request("/api/account-tokens/batch", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  getAccountTokenGroups: (accountId: number) =>
-    request(`/api/account-tokens/groups/${accountId}`),
-  setDefaultAccountToken: (id: number) =>
-    request(`/api/account-tokens/${id}/default`, { method: "POST" }),
-  getAccountTokenValue: (id: number) =>
-    request(`/api/account-tokens/${id}/value`),
-  syncAccountTokens: (accountId: number) =>
-    request(`/api/account-tokens/sync/${accountId}`, {
-      method: "POST",
-      timeoutMs: 45_000,
-    }),
-  syncAllAccountTokens: (wait = false) =>
-    request("/api/account-tokens/sync-all", {
-      method: "POST",
-      body: JSON.stringify(wait ? { wait: true } : {}),
-      timeoutMs: wait ? 150_000 : 30_000,
-    }),
-
-  // Check-in
-  triggerCheckinAll: () => request("/api/checkin/trigger", { method: "POST" }),
-  triggerCheckin: (id: number) =>
-    request(`/api/checkin/trigger/${id}`, { method: "POST" }),
-  getCheckinLogs: (params?: string) =>
-    request(`/api/checkin/logs${params ? "?" + params : ""}`),
-  updateCheckinSchedule: (cron: string) =>
-    request("/api/checkin/schedule", {
-      method: "PUT",
-      body: JSON.stringify({ cron }),
-    }),
-
   // Routes
   getRoutes: () => request("/api/routes"),
   getRoutesLite: () => request("/api/routes/lite"),
@@ -1122,87 +886,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ query, limit: 20 }),
     }),
-
-  // OAuth
-  getOAuthProviders: () =>
-    request("/api/oauth/providers") as Promise<OAuthProvidersResponse>,
-  startOAuthProvider: (
-    provider: string,
-    data?: {
-      accountId?: number;
-      projectId?: string;
-      proxyUrl?: string | null;
-      useSystemProxy?: boolean;
-    },
-  ) =>
-    request(`/api/oauth/providers/${encodeURIComponent(provider)}/start`, {
-      method: "POST",
-      body: JSON.stringify(data || {}),
-    }) as Promise<OAuthStartResponse>,
-  getOAuthSession: (state: string) =>
-    request(
-      `/api/oauth/sessions/${encodeURIComponent(state)}`,
-    ) as Promise<OAuthSessionInfo>,
-  submitOAuthManualCallback: (state: string, callbackUrl: string) =>
-    request(
-      `/api/oauth/sessions/${encodeURIComponent(state)}/manual-callback`,
-      {
-        method: "POST",
-        body: JSON.stringify({ callbackUrl }),
-      },
-    ) as Promise<{ success: true }>,
-  getOAuthConnections: (params?: { limit?: number; offset?: number }) =>
-    request(
-      `/api/oauth/connections${buildQueryString(params)}`,
-    ) as Promise<OAuthConnectionsResponse>,
-  refreshOAuthConnectionQuota: (accountId: number) =>
-    request(`/api/oauth/connections/${accountId}/quota/refresh`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    }) as Promise<{ success: true; quota: OAuthQuotaInfo }>,
-  refreshOAuthConnectionQuotaBatch: (accountIds: number[]) =>
-    request("/api/oauth/connections/quota/refresh-batch", {
-      method: "POST",
-      body: JSON.stringify({ accountIds }),
-    }) as Promise<OAuthQuotaBatchRefreshResponse>,
-  updateOAuthConnectionProxy: (
-    accountId: number,
-    data: { proxyUrl?: string | null; useSystemProxy?: boolean },
-  ) =>
-    request(`/api/oauth/connections/${accountId}/proxy`, {
-      method: "PATCH",
-      body: JSON.stringify(data || {}),
-    }) as Promise<{ success: true }>,
-  rebindOAuthConnection: (
-    accountId: number,
-    data?: { proxyUrl?: string | null; useSystemProxy?: boolean },
-  ) =>
-    request(`/api/oauth/connections/${accountId}/rebind`, {
-      method: "POST",
-      body: JSON.stringify(data || {}),
-    }) as Promise<OAuthStartResponse>,
-  deleteOAuthConnection: (accountId: number) =>
-    request(`/api/oauth/connections/${accountId}`, {
-      method: "DELETE",
-    }) as Promise<{ success: true }>,
-  importOAuthConnections: (data: Record<string, unknown>) =>
-    request("/api/oauth/import", {
-      method: "POST",
-      body: JSON.stringify(Array.isArray(data.items) ? data : { data }),
-    }) as Promise<OAuthImportResponse>,
-  createOAuthRouteUnit: (data: {
-    accountIds: number[];
-    name: string;
-    strategy: OAuthRouteUnitStrategy;
-  }) =>
-    request("/api/oauth/route-units", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }) as Promise<OAuthRouteUnitMutationResponse>,
-  deleteOAuthRouteUnit: (routeUnitId: number) =>
-    request(`/api/oauth/route-units/${routeUnitId}`, {
-      method: "DELETE",
-    }) as Promise<{ success: true }>,
 
   // Events
   getEvents: (params?: string) =>

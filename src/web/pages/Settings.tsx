@@ -41,17 +41,6 @@ const ROUTE_COOLDOWN_UNIT_OPTIONS = [
   { value: 'hour', label: '小时', multiplierSec: 60 * 60 },
   { value: 'day', label: '天', multiplierSec: SECONDS_PER_DAY },
 ] as const;
-const CHECKIN_SCHEDULE_MODE_OPTIONS = [
-  { value: 'cron', label: 'Cron' },
-  { value: 'interval', label: '间隔签到' },
-] as const;
-const CHECKIN_INTERVAL_OPTIONS = Array.from({ length: 24 }, (_, index) => {
-  const hour = index + 1;
-  return {
-    value: String(hour),
-    label: `${hour} 小时`,
-  };
-});
 type DbDialect = 'sqlite' | 'mysql' | 'postgres';
 type RouteCooldownUnit = typeof ROUTE_COOLDOWN_UNIT_OPTIONS[number]['value'];
 type SettingsPillTone = 'neutral' | 'primary' | 'danger' | 'warning';
@@ -369,7 +358,6 @@ export default function Settings() {
   const [maskedToken, setMaskedToken] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingSchedule, setSavingSchedule] = useState(false);
-  const [testingCheckin, setTestingCheckin] = useState(false);
   const [savingToken, setSavingToken] = useState(false);
   const [savingSystemProxy, setSavingSystemProxy] = useState(false);
   const [savingModelAvailabilityProbe, setSavingModelAvailabilityProbe] = useState(false);
@@ -783,9 +771,6 @@ export default function Settings() {
     setSavingSchedule(true);
     try {
       await api.updateRuntimeSettings({
-        checkinCron: runtime.checkinCron,
-        checkinScheduleMode: runtime.checkinScheduleMode,
-        checkinIntervalHours: runtime.checkinIntervalHours,
         balanceRefreshCron: runtime.balanceRefreshCron,
         logCleanupCron: runtime.logCleanupCron,
         logCleanupUsageLogsEnabled: runtime.logCleanupUsageLogsEnabled,
@@ -797,18 +782,6 @@ export default function Settings() {
       toast.error(err?.message || '保存失败');
     } finally {
       setSavingSchedule(false);
-    }
-  };
-
-  const triggerScheduleCheckin = async () => {
-    setTestingCheckin(true);
-    try {
-      await api.triggerCheckinAll();
-      toast.success('已开始全部签到，请稍后查看签到日志');
-    } catch (err: any) {
-      toast.error(err?.message || '触发签到失败');
-    } finally {
-      setTestingCheckin(false);
     }
   };
 
@@ -1333,49 +1306,7 @@ export default function Settings() {
 
         <div className="card animate-slide-up stagger-2" style={{ padding: 20 }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>定时任务</div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '180px 180px auto', gap: 12, alignItems: 'end', marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>签到方式</div>
-              <ModernSelect
-                value={runtime.checkinScheduleMode}
-                onChange={(value) => setRuntime((prev) => ({
-                  ...prev,
-                  checkinScheduleMode: value === 'interval' ? 'interval' : 'cron',
-                }))}
-                options={CHECKIN_SCHEDULE_MODE_OPTIONS.map((item) => ({ ...item }))}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>签到间隔</div>
-              <ModernSelect
-                value={String(runtime.checkinIntervalHours)}
-                onChange={(value) => setRuntime((prev) => ({
-                  ...prev,
-                  checkinIntervalHours: Math.min(24, Math.max(1, Math.trunc(Number(value) || 1))),
-                }))}
-                disabled={runtime.checkinScheduleMode !== 'interval'}
-                options={CHECKIN_INTERVAL_OPTIONS}
-              />
-            </div>
-            <button
-              onClick={triggerScheduleCheckin}
-              disabled={testingCheckin}
-              className="btn btn-ghost"
-              style={{ border: '1px solid var(--color-border)', whiteSpace: 'nowrap' }}
-            >
-              {testingCheckin ? '触发中...' : '测试一次签到'}
-            </button>
-          </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>签到 Cron</div>
-              <input
-                value={runtime.checkinCron}
-                onChange={(e) => setRuntime((prev) => ({ ...prev, checkinCron: e.target.value }))}
-                style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
-                disabled={runtime.checkinScheduleMode !== 'cron'}
-              />
-            </div>
             <div>
               <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>余额刷新 Cron</div>
               <input
