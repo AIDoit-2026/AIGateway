@@ -102,25 +102,25 @@
 
 目标：API Key only 模式下，代理失败可以记录失败、冷却通道、写代理日志和通知，但不能自动把 API Key 连接置为 `expired`。`expired` 状态只保留给 Session/OAuth 等需要重新授权的凭证。
 
-- [ ] 修改 `src/server/services/alertService.ts`。
-  - [ ] 让 `reportTokenExpired()` 在更新账号状态前读取账号凭证类型。
-  - [ ] 对 `credentialMode=apikey` 或 `requiresManagedAccountTokens(account) === false` 的连接，不执行 `accounts.status='expired'` 更新。
-  - [ ] 对 API Key 连接仍可写事件和通知，但文案应避免“请重新绑定账号”这类 Session 提示。
-  - [ ] 对 Session/OAuth 连接保留现有置为 `expired` 的行为，除非产品后续决定一起取消。
-- [ ] 调整调用语义。
-  - [ ] 检查 `src/server/proxy-core/surfaces/sharedSurface.ts` 中的代理失败路径。
-  - [ ] 检查 `src/server/routes/proxy/images.ts`、`completions.ts`、`embeddings.ts`、`search.ts`、`videos.ts` 等仍在 route 层直接调用 `reportTokenExpired()` 的旧路径。
-  - [ ] 如有必要，给 `reportTokenExpired()` 增加参数，例如 `markAccountExpired?: boolean` 或 `source?: 'proxy' | 'balance' | 'checkin'`，但优先在函数内部统一判断账号类型。
-- [ ] 调整健康状态。
-  - [ ] API Key 代理失败不应让页面显示为“凭证已过期，需要重绑”。
-  - [ ] API Key 可进入通道冷却或 runtime unhealthy，但账号持久状态应保持 `active`。
-  - [ ] 若需要展示问题，应使用“最近代理失败 / 上游鉴权失败 / 请检查 API Key”这类 API Key 语义。
-- [ ] 更新测试。
-  - [ ] 新增 `reportTokenExpired()` 对 API Key 连接不改 `accounts.status` 的测试。
+- [x] 修改 `src/server/services/alertService.ts`。
+  - [x] 让 `reportTokenExpired()` 在更新账号状态前读取账号凭证类型。
+  - [x] 对 `credentialMode=apikey` 或 `requiresManagedAccountTokens(account) === false` 的连接，不执行 `accounts.status='expired'` 更新。
+  - [x] 对 API Key 连接仍可写事件和通知，但文案应避免“请重新绑定账号”这类 Session 提示。
+  - [x] 对 Session/OAuth 连接保留现有置为 `expired` 的行为，除非产品后续决定一起取消。
+- [x] 调整调用语义。
+  - [x] 检查 `src/server/proxy-core/surfaces/sharedSurface.ts` 中的代理失败路径。
+  - [x] 检查 `src/server/routes/proxy/images.ts`、`completions.ts`、`embeddings.ts`、`search.ts`、`videos.ts` 等仍在 route 层直接调用 `reportTokenExpired()` 的旧路径。
+  - [x] 如有必要，给 `reportTokenExpired()` 增加参数，例如 `markAccountExpired?: boolean` 或 `source?: 'proxy' | 'balance' | 'checkin'`，但优先在函数内部统一判断账号类型。
+- [x] 调整健康状态。
+  - [x] API Key 代理失败不应让页面显示为“凭证已过期，需要重绑”。
+  - [x] API Key 可进入通道冷却或 runtime unhealthy，但账号持久状态应保持 `active`。
+  - [x] 若需要展示问题，应使用“最近代理失败 / 上游鉴权失败 / 请检查 API Key”这类 API Key 语义。
+- [x] 更新测试。
+  - [x] 新增 `reportTokenExpired()` 对 API Key 连接不改 `accounts.status` 的测试。
   - [ ] 新增代理路径中 API Key 遇到 401 后仍保持 `active` 的测试。
-  - [ ] 保留 Session 账号遇到 token expired 后置为 `expired` 的测试。
+  - [x] 保留 Session 账号遇到 token expired 后置为 `expired` 的测试。
   - [ ] 更新或删除 `src/server/routes/api/accounts.apikey-recovery.test.ts` 中默认假设 API Key 会进入 `expired` 的用例。
-  - [ ] 更新 `src/web/pages/accounts.proxy-only-expired.test.tsx`，确保 API Key only UI 不再依赖 `expired` 状态表达失败。
+  - [x] 更新 `src/web/pages/accounts.proxy-only-expired.test.tsx`，确保 API Key only UI 不再依赖 `expired` 状态表达失败。
 - [ ] 回归验证。
   - [ ] 连续触发 API Key 上游 401 / 403 / 5xx / timeout 后，连接状态仍为 `active`。
   - [ ] 通道失败计数和冷却仍然生效，避免坏 Key 被无限优先选择。
