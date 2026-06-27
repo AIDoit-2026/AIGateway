@@ -17,33 +17,33 @@
 
 ## 阶段 1：前端入口和页面裁剪
 
-- [ ] 修改 `src/web/App.tsx` 侧边栏。
-  - [ ] 将“连接管理”明确指向 API Key 管理视图。
-  - [ ] 删除“OAuth 管理”菜单项。
-  - [ ] 删除“签到记录”菜单项。
-  - [ ] 确认“下游密钥”仍然独立保留。
-- [ ] 修改 `src/web/App.tsx` 路由。
-  - [ ] 移除 `/oauth` 页面路由。
-  - [ ] 移除 `/checkin` 页面路由。
-  - [ ] 移除或重定向 `/tokens` 路由。
-  - [ ] 保留 `/accounts`，但只呈现 API Key 管理。
-- [ ] 修改 `src/web/pages/Accounts.tsx`。
-  - [ ] 删除 `session` segment。
-  - [ ] 删除 `tokens` segment。
-  - [ ] 删除 `TokensPanel` import 和嵌入渲染。
-  - [ ] 默认视图固定为 `apikey`。
-  - [ ] 删除用户名密码登录表单。
-  - [ ] 删除 Session Token / Cookie 相关表单和提示。
-  - [ ] 删除签到开关、余额刷新、重绑 Session、账号健康刷新等 session-only 操作。
-  - [ ] 将页面文案从“账号”收敛为“API Key 连接”或“连接”。
-- [ ] 删除或停用 `src/web/pages/Tokens.tsx` 的可访问入口。
-  - [ ] 若保留文件，确保只作为旧 `/tokens` 重定向兼容存在。
-  - [ ] 若删除文件，同步移除所有 import、测试和路由引用。
-- [ ] 删除或停用 `src/web/pages/CheckinLog.tsx` 的可访问入口。
-- [ ] 删除或停用 `src/web/pages/OAuthManagement.tsx` 的可访问入口。
-- [ ] 清理相关页面子组件。
-  - [ ] `src/web/pages/oauth/OAuthModelsModal.tsx`
-  - [ ] 与账号令牌管理强绑定的 UI helper/test。
+- [x] 修改 `src/web/App.tsx` 侧边栏。
+  - [x] 将“连接管理”明确指向 API Key 管理视图。
+  - [x] 删除“OAuth 管理”菜单项。
+  - [x] 删除“签到记录”菜单项。
+  - [x] 确认“下游密钥”仍然独立保留。
+- [x] 修改 `src/web/App.tsx` 路由。
+  - [x] 移除 `/oauth` 页面路由。
+  - [x] 移除 `/checkin` 页面路由。
+  - [x] 移除或重定向 `/tokens` 路由。
+  - [x] 保留 `/accounts`，但只呈现 API Key 管理。
+- [x] 修改 `src/web/pages/Accounts.tsx`。
+  - [x] 删除 `session` segment。
+  - [x] 删除 `tokens` segment。
+  - [x] 删除 `TokensPanel` import 和嵌入渲染。
+  - [x] 默认视图固定为 `apikey`。
+  - [x] 删除用户名密码登录表单。
+  - [x] 删除 Session Token / Cookie 相关表单和提示。
+  - [x] 删除签到开关、余额刷新、重绑 Session、账号健康刷新等 session-only 操作。
+  - [x] 将页面文案从“账号”收敛为“API Key 连接”或“连接”。
+- [x] 删除或停用 `src/web/pages/Tokens.tsx` 的可访问入口。
+  - [x] 若保留文件，确保只作为旧 `/tokens` 重定向兼容存在。
+  - [x] 若删除文件，同步移除所有 import、测试和路由引用。
+- [x] 删除或停用 `src/web/pages/CheckinLog.tsx` 的可访问入口。
+- [x] 删除或停用 `src/web/pages/OAuthManagement.tsx` 的可访问入口。
+- [x] 清理相关页面子组件。
+  - [x] `src/web/pages/oauth/OAuthModelsModal.tsx`
+  - [x] 与账号令牌管理强绑定的 UI helper/test。
 
 ## 阶段 2：前端 API 客户端收敛
 

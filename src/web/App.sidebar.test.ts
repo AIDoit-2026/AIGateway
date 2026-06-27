@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('App sidebar config', () => {
-  it('uses 连接管理 for /accounts and removes standalone /tokens navigation item', () => {
+  it('uses API Key 连接 for /accounts and removes legacy standalone navigation items', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/web/App.tsx'), 'utf8');
 
-    expect(source).toContain("{ to: '/accounts', label: '连接管理'");
+    expect(source).toContain("{ to: '/accounts', label: 'API Key 连接'");
     expect(source).not.toContain("{ to: '/accounts', label: '账号'");
     expect(source).not.toContain("{ to: '/tokens', label: '令牌管理'");
+    expect(source).not.toContain("{ to: '/oauth', label: 'OAuth 管理'");
+    expect(source).not.toContain("{ to: '/checkin', label: '签到记录'");
   });
 
   it('places downstream key navigation under 控制台 instead of 系统', () => {
@@ -22,11 +24,14 @@ describe('App sidebar config', () => {
     expect(systemGroupIndex).toBeGreaterThan(downstreamIndex);
   });
 
-  it('adds standalone OAuth 管理 navigation entry', () => {
+  it('keeps legacy OAuth, checkin, and token routes as redirects only', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/web/App.tsx'), 'utf8');
 
-    expect(source).toContain("{ to: '/oauth', label: 'OAuth 管理'");
-    expect(source).toContain("const OAuthManagement = lazy(() => import('./pages/OAuthManagement.js'));");
-    expect(source).toContain('<Route path="/oauth" element={<OAuthManagement />} />');
+    expect(source).not.toContain("const OAuthManagement = lazy(() => import('./pages/OAuthManagement.js'));");
+    expect(source).not.toContain("const Tokens = lazy(() => import('./pages/Tokens.js'));");
+    expect(source).not.toContain("const CheckinLog = lazy(() => import('./pages/CheckinLog.js'));");
+    expect(source).toContain('<Route path="/oauth" element={<Navigate to="/accounts?segment=apikey" replace />} />');
+    expect(source).toContain('<Route path="/checkin" element={<Navigate to="/accounts?segment=apikey" replace />} />');
+    expect(source).toContain('<Route path="/tokens" element={<Navigate to="/accounts?segment=apikey" replace />} />');
   });
 });
