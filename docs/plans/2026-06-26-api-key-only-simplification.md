@@ -128,26 +128,26 @@
 
 ## 阶段 5：测试调整
 
-- [ ] 更新侧边栏测试。
-  - [ ] `src/web/App.sidebar.test.ts`
-  - [ ] 移除 OAuth 管理、签到记录、账号令牌独立入口相关断言。
-- [ ] 更新连接管理页面测试。
-  - [ ] 删除 session segment 相关测试。
-  - [ ] 删除 tokens segment / embedded TokensPanel 相关测试。
-  - [ ] 保留 API Key 创建、验证、批量添加、模型查看测试。
-- [ ] 更新 token 页面测试。
-  - [ ] 如果删除 `Tokens.tsx`，移除对应测试。
-  - [ ] 如果保留重定向，改为重定向测试。
-- [ ] 更新签到页面测试。
-  - [ ] 如果删除 `CheckinLog.tsx`，移除对应测试。
-  - [ ] 如果保留后端 API，保留后端 route/service 测试。
-- [ ] 更新 OAuth 页面测试。
-  - [ ] 如果删除 `OAuthManagement.tsx`，移除对应 UI 测试。
-  - [ ] 如果保留后端 API，保留 OAuth service/route 测试。
-- [ ] 增加 API Key only 回归测试。
-  - [ ] API Key 连接创建后不会创建可用 `account_tokens` 依赖。
-  - [ ] API Key route channel 使用 `tokenId=null`。
-  - [ ] API Key 连接不显示签到、余额刷新、session 重绑操作。
+- [x] 更新侧边栏测试。
+  - [x] `src/web/App.sidebar.test.ts`
+  - [x] 移除 OAuth 管理、签到记录、账号令牌独立入口相关断言。
+- [x] 更新连接管理页面测试。
+  - [x] 删除 session segment 相关测试。
+  - [x] 删除 tokens segment / embedded TokensPanel 相关测试。
+  - [x] 保留 API Key 创建、验证、批量添加、模型查看测试。
+- [x] 更新 token 页面测试。
+  - [x] 如果删除 `Tokens.tsx`，移除对应测试。
+  - [x] 如果保留重定向，改为重定向测试。
+- [x] 更新签到页面测试。
+  - [x] 如果删除 `CheckinLog.tsx`，移除对应测试。
+  - [x] 如果保留后端 API，保留后端 route/service 测试。
+- [x] 更新 OAuth 页面测试。
+  - [x] 如果删除 `OAuthManagement.tsx`，移除对应 UI 测试。
+  - [x] 如果保留后端 API，保留 OAuth service/route 测试。
+- [x] 增加 API Key only 回归测试。
+  - [x] API Key 连接创建后不会创建可用 `account_tokens` 依赖。
+  - [x] API Key route channel 使用 `tokenId=null`。
+  - [x] API Key 连接不显示签到、余额刷新、session 重绑操作。
 - [ ] 运行关键测试。
   - [ ] `npm test -- src/server/services/modelService.test.ts`
   - [ ] `npm test -- src/server/services/accountExtraConfig.test.ts`

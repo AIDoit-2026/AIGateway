@@ -8,9 +8,7 @@ function readPageSource(relativePath: string): string {
 
 describe('ResponsiveBatchActionBar page adoption', () => {
   it('is used by the repeated admin list pages instead of open-coded mobile and desktop batch wrappers', () => {
-    expect(readPageSource('src/web/pages/Accounts.tsx')).toContain('ResponsiveBatchActionBar');
     expect(readPageSource('src/web/pages/Sites.tsx')).toContain('ResponsiveBatchActionBar');
-    expect(readPageSource('src/web/pages/Tokens.tsx')).toContain('ResponsiveBatchActionBar');
     expect(readPageSource('src/web/pages/DownstreamKeys.tsx')).toContain('ResponsiveBatchActionBar');
   });
 });

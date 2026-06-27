@@ -12,7 +12,6 @@ const { apiMock } = vi.hoisted(() => ({
     getRoutesLite: vi.fn(),
     getAccounts: vi.fn(),
     getAccountsSnapshot: vi.fn(),
-    getAccountTokens: vi.fn(),
     getDownstreamApiKeyOverview: vi.fn(),
     getDownstreamApiKeyTrend: vi.fn(),
     createDownstreamApiKey: vi.fn(),
@@ -163,24 +162,6 @@ beforeEach(() => {
         id: 202,
         name: '站点B',
         status: 'active',
-      },
-    },
-  ]);
-  apiMock.getAccountTokens.mockResolvedValue([
-    {
-      id: 301,
-      accountId: 101,
-      name: 'token-a',
-      tokenGroup: 'group-a',
-      enabled: true,
-      valueStatus: 'ready',
-      account: {
-        id: 101,
-        username: '站点A账号',
-      },
-      site: {
-        id: 201,
-        name: '站点A',
       },
     },
   ]);
@@ -841,7 +822,6 @@ describe('DownstreamKeys page', () => {
       await flushMicrotasks();
 
       expect(apiMock.getAccountsSnapshot).not.toHaveBeenCalled();
-      expect(apiMock.getAccountTokens).not.toHaveBeenCalled();
 
       const createBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('新增下游密钥'))[0];
       await act(async () => {
@@ -850,7 +830,6 @@ describe('DownstreamKeys page', () => {
       await flushMicrotasks();
 
       expect(apiMock.getAccountsSnapshot).toHaveBeenCalledTimes(1);
-      expect(apiMock.getAccountTokens).toHaveBeenCalledTimes(1);
 
       const advancedBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('高级配置'))[0];
       await act(async () => {
@@ -860,9 +839,9 @@ describe('DownstreamKeys page', () => {
 
       const text = collectText(root!.root);
       expect(text).toContain('排除站点');
-      expect(text).toContain('排除 API Key/令牌');
+      expect(text).toContain('排除 API Key');
       expect(text).toContain('默认 API Key');
-      expect(text).toContain('group-a');
+      expect(text).toContain('使用连接默认 API Key');
 
       const inputs = root!.root.findAllByType('input');
       const nameInput = inputs.find((node) => node.props.placeholder === '例如：项目 A / 移动端');
