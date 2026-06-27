@@ -59,32 +59,32 @@
 
 ## 阶段 3：后端行为限制和兼容
 
-- [ ] 调整 `src/server/routes/api/accounts.ts`。
-  - [ ] 新增连接时默认 `credentialMode=apikey`。
-  - [ ] 对新请求拒绝或忽略 `credentialMode=session`。
-  - [ ] 对用户名密码登录接口决定策略：保留但废弃，或返回明确错误。
-  - [ ] 对 rebind session 接口决定策略：保留但废弃，或返回明确错误。
-  - [ ] 创建 API Key 连接时继续走 `createManualAccount()`。
-- [ ] 调整 `src/server/services/manualAccountCreationService.ts`。
-  - [ ] 确认 API Key 路径仍然写入 `apiToken`，`accessToken` 为空。
-  - [ ] 确认 `extraConfig.credentialMode` 为 `apikey`。
-  - [ ] 确认模型发现和路由重建仍然执行。
-- [ ] 调整 `src/server/services/accountExtraConfig.ts`。
-  - [ ] 保持 `supportsDirectAccountRoutingConnection()` 对 API Key 的支持。
-  - [ ] 保持 `requiresManagedAccountTokens()` 对 API Key 返回 `false`。
-- [ ] 调整 `src/server/routes/api/accountTokens.ts`。
-  - [ ] 第一阶段可保留旧 API，但不再由 UI 调用。
-  - [ ] 后续若确认不再支持账号令牌，再统一废弃或删除路由。
-- [ ] 调整 `src/server/routes/api/checkin.ts`。
-  - [ ] 第一阶段可保留旧 API，但不再由 UI 调用。
-  - [ ] 后续若确认不再支持签到，再停止注册路由和 scheduler。
-- [ ] 调整 `src/server/routes/api/oauth.ts`。
-  - [ ] 第一阶段可保留旧 API，但不再由 UI 调用。
-  - [ ] 后续若确认不再支持 OAuth，再停止注册路由和 OAuth callback scheduler。
-- [ ] 检查 `src/server/index.ts` 启动流程。
-  - [ ] 如果后端也裁掉签到，移除 `startScheduler()` 或拆掉其中签到部分。
-  - [ ] 如果后端也裁掉 OAuth，移除 OAuth provider site seed、identity backfill、loopback callback server。
-  - [ ] 第一阶段建议先不动启动流程，降低风险。
+- [x] 调整 `src/server/routes/api/accounts.ts`。
+  - [x] 新增连接时默认 `credentialMode=apikey`。
+  - [x] 对新请求拒绝或忽略 `credentialMode=session`。
+  - [x] 对用户名密码登录接口决定策略：保留但废弃，或返回明确错误。
+  - [x] 对 rebind session 接口决定策略：保留但废弃，或返回明确错误。
+  - [x] 创建 API Key 连接时继续走 `createManualAccount()`。
+- [x] 调整 `src/server/services/manualAccountCreationService.ts`。
+  - [x] 确认 API Key 路径仍然写入 `apiToken`，`accessToken` 为空。
+  - [x] 确认 `extraConfig.credentialMode` 为 `apikey`。
+  - [x] 确认模型发现和路由重建仍然执行。
+- [x] 调整 `src/server/services/accountExtraConfig.ts`。
+  - [x] 保持 `supportsDirectAccountRoutingConnection()` 对 API Key 的支持。
+  - [x] 保持 `requiresManagedAccountTokens()` 对 API Key 返回 `false`。
+- [x] 调整 `src/server/routes/api/accountTokens.ts`。
+  - [x] 第一阶段可保留旧 API，但不再由 UI 调用。
+  - [x] 后续若确认不再支持账号令牌，再统一废弃或删除路由。
+- [x] 调整 `src/server/routes/api/checkin.ts`。
+  - [x] 第一阶段可保留旧 API，但不再由 UI 调用。
+  - [x] 后续若确认不再支持签到，再停止注册路由和 scheduler。
+- [x] 调整 `src/server/routes/api/oauth.ts`。
+  - [x] 第一阶段可保留旧 API，但不再由 UI 调用。
+  - [x] 后续若确认不再支持 OAuth，再停止注册路由和 OAuth callback scheduler。
+- [x] 检查 `src/server/index.ts` 启动流程。
+  - [x] 如果后端也裁掉签到，移除 `startScheduler()` 或拆掉其中签到部分。
+  - [x] 如果后端也裁掉 OAuth，移除 OAuth provider site seed、identity backfill、loopback callback server。
+  - [x] 第一阶段建议先不动启动流程，降低风险。
 
 ## 阶段 4：路由、模型和代理回归
 

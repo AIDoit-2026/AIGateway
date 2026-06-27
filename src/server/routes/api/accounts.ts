@@ -502,6 +502,12 @@ export async function accountsRoutes(app: FastifyInstance) {
     "/api/accounts/login",
     { preHandler: [limitAccountLogin] },
     async (request, reply) => {
+      void request;
+      return reply.code(410).send({
+        success: false,
+        message: "账号密码登录已下线，请在连接管理中添加上游 API Key。",
+      });
+
       const parsedBody = parseAccountLoginPayload(request.body);
       if (!parsedBody.success) {
         return reply
@@ -1085,6 +1091,12 @@ export async function accountsRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string }; Body: unknown }>(
     "/api/accounts/:id/rebind-session",
     async (request, reply) => {
+      void request;
+      return reply.code(410).send({
+        success: false,
+        message: "Session 重绑已下线，请更新或重新添加 API Key 连接。",
+      });
+
       const parsedBody = parseAccountRebindSessionPayload(request.body);
       if (!parsedBody.success) {
         return reply
@@ -1293,11 +1305,16 @@ export async function accountsRoutes(app: FastifyInstance) {
         });
     }
 
+    const requestedMode = resolveRequestedCredentialMode(body.credentialMode);
+    if (requestedMode === "session") {
+      return reply.code(400).send({
+        success: false,
+        message: "Session 连接创建已下线，请提交 API Key。",
+      });
+    }
+
     const explicitBatchTokens = parseBatchApiKeys(body.accessTokens);
-    const credentialMode =
-      explicitBatchTokens.length > 0
-        ? "apikey"
-        : resolveRequestedCredentialMode(body.credentialMode);
+    const credentialMode: AccountCredentialMode = "apikey";
     const requestedTokens =
       explicitBatchTokens.length > 0
         ? explicitBatchTokens
