@@ -1011,42 +1011,44 @@ describe('selectSurfaceChannelForAttempt', () => {
       recordDownstreamCost,
     });
 
-    expect(resolveProxyUsageWithSelfLogFallbackMock).toHaveBeenCalledWith({
-      site: { id: 44, url: 'https://upstream.example.com', name: 'Codex OAuth' },
-      account: { id: 33, username: 'oauth-user' },
-      tokenValue: 'live-token',
-      tokenName: 'default',
-      modelName: 'upstream-model',
-      requestStartedAtMs: 1000,
-      requestEndedAtMs: 1250,
-      localLatencyMs: 250,
-      upstreamUsagePresent: true,
-      usage: {
-        promptTokens: 10,
-        completionTokens: 5,
-        totalTokens: 15,
-      },
+    await vi.waitFor(() => {
+      expect(resolveProxyUsageWithSelfLogFallbackMock).toHaveBeenCalledWith({
+        site: { id: 44, url: 'https://upstream.example.com', name: 'Codex OAuth' },
+        account: { id: 33, username: 'oauth-user' },
+        tokenValue: 'live-token',
+        tokenName: 'default',
+        modelName: 'upstream-model',
+        requestStartedAtMs: 1000,
+        requestEndedAtMs: 1250,
+        localLatencyMs: 250,
+        upstreamUsagePresent: true,
+        usage: {
+          promptTokens: 10,
+          completionTokens: 5,
+          totalTokens: 15,
+        },
+      });
+      expect(resolveProxyLogBillingMock).toHaveBeenCalledWith({
+        site: { id: 44, url: 'https://upstream.example.com', name: 'Codex OAuth' },
+        account: { id: 33, username: 'oauth-user' },
+        modelName: 'upstream-model',
+        parsedUsage: {
+          promptTokens: 10,
+          completionTokens: 5,
+          totalTokens: 15,
+        },
+        resolvedUsage: {
+          promptTokens: 20,
+          completionTokens: 8,
+          totalTokens: 28,
+          recoveredFromSelfLog: true,
+          estimatedCostFromQuota: 0.42,
+          selfLogBillingMeta: null,
+          usageSource: 'self-log',
+        },
+      });
+      expect(recordSuccessMock).toHaveBeenCalledWith(11, 250, 0.42, 'upstream-model');
     });
-    expect(resolveProxyLogBillingMock).toHaveBeenCalledWith({
-      site: { id: 44, url: 'https://upstream.example.com', name: 'Codex OAuth' },
-      account: { id: 33, username: 'oauth-user' },
-      modelName: 'upstream-model',
-      parsedUsage: {
-        promptTokens: 10,
-        completionTokens: 5,
-        totalTokens: 15,
-      },
-      resolvedUsage: {
-        promptTokens: 20,
-        completionTokens: 8,
-        totalTokens: 28,
-        recoveredFromSelfLog: true,
-        estimatedCostFromQuota: 0.42,
-        selfLogBillingMeta: null,
-        usageSource: 'self-log',
-      },
-    });
-    expect(recordSuccessMock).toHaveBeenCalledWith(11, 250, 0.42, 'upstream-model');
     expect(recordDownstreamCost).toHaveBeenCalledWith(0.42);
     expect(logSuccess).toHaveBeenCalledWith({
       selected: {
@@ -1075,16 +1077,16 @@ describe('selectSurfaceChannelForAttempt', () => {
     });
     expect(result).toEqual({
       resolvedUsage: {
-        promptTokens: 20,
-        completionTokens: 8,
-        totalTokens: 28,
-        recoveredFromSelfLog: true,
-        estimatedCostFromQuota: 0.42,
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+        recoveredFromSelfLog: false,
+        estimatedCostFromQuota: 0,
         selfLogBillingMeta: null,
-        usageSource: 'self-log',
+        usageSource: 'upstream',
       },
-      estimatedCost: 0.42,
-      billingDetails: { source: 'pricing-test' },
+      estimatedCost: 0,
+      billingDetails: null,
     });
   });
 
@@ -1128,15 +1130,17 @@ describe('selectSurfaceChannelForAttempt', () => {
       logSuccess,
     });
 
-    expect(resolveProxyUsageWithSelfLogFallbackMock).toHaveBeenCalledWith(expect.objectContaining({
-      upstreamUsagePresent: false,
-    }));
-    expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({
-      promptTokens: null,
-      completionTokens: null,
-      totalTokens: null,
-      usageSource: 'unknown',
-    }));
+    await vi.waitFor(() => {
+      expect(resolveProxyUsageWithSelfLogFallbackMock).toHaveBeenCalledWith(expect.objectContaining({
+        upstreamUsagePresent: false,
+      }));
+      expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({
+        promptTokens: null,
+        completionTokens: null,
+        totalTokens: null,
+        usageSource: 'unknown',
+      }));
+    });
   });
 
   it('captures codex quota headers from successful upstream responses as best-effort bookkeeping', async () => {
@@ -1225,11 +1229,13 @@ describe('selectSurfaceChannelForAttempt', () => {
       },
     });
 
-    expect(consoleErrorMock).toHaveBeenCalledWith(
-      '[proxy/chat] failed to record success metrics',
-      expect.any(Error),
-    );
-    expect(recordSuccessMock).toHaveBeenCalledWith(11, 250, 0, 'upstream-model');
+    await vi.waitFor(() => {
+      expect(consoleErrorMock).toHaveBeenCalledWith(
+        '[proxy/chat] failed to record success metrics',
+        expect.any(Error),
+      );
+      expect(recordSuccessMock).toHaveBeenCalledWith(11, 250, 0, 'upstream-model');
+    });
     expect(recordDownstreamCost).toHaveBeenCalledWith(0);
     expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({
       promptTokens: 10,
@@ -1250,6 +1256,57 @@ describe('selectSurfaceChannelForAttempt', () => {
       },
       estimatedCost: 0,
       billingDetails: null,
+    });
+  });
+
+  it('does not wait for slow success log writes', async () => {
+    resolveProxyUsageWithSelfLogFallbackMock.mockResolvedValue({
+      promptTokens: 10,
+      completionTokens: 5,
+      totalTokens: 15,
+      recoveredFromSelfLog: false,
+      estimatedCostFromQuota: 0,
+      selfLogBillingMeta: null,
+      usageSource: 'upstream',
+    });
+    resolveProxyLogBillingMock.mockResolvedValue({
+      estimatedCost: 0.12,
+      billingDetails: null,
+    });
+    const logSuccess = vi.fn().mockImplementation(() => new Promise(() => {}));
+
+    const { recordSurfaceSuccess } = await import('./sharedSurface.js');
+    await expect(recordSurfaceSuccess({
+      selected: {
+        channel: { id: 11, routeId: 22 },
+        account: { id: 33, username: 'oauth-user' },
+        site: { id: 44, url: 'https://upstream.example.com', name: 'Codex OAuth' },
+        tokenValue: 'live-token',
+        tokenName: 'default',
+        actualModel: 'upstream-model',
+      },
+      requestedModel: 'gpt-5.2',
+      modelName: 'upstream-model',
+      parsedUsage: {
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+      },
+      requestStartedAtMs: 1000,
+      latencyMs: 250,
+      retryCount: 0,
+      upstreamPath: '/v1/chat/completions',
+      logSuccess,
+      bestEffortMetrics: {
+        errorLabel: '[proxy/chat] failed to record success metrics',
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      estimatedCost: 0,
+      billingDetails: null,
+    }));
+
+    await vi.waitFor(() => {
+      expect(logSuccess).toHaveBeenCalled();
     });
   });
 });

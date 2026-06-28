@@ -381,8 +381,11 @@ export async function recordSurfaceSuccess(input: {
     selfLogBillingMeta: null,
     usageSource: hasUpstreamUsage ? 'upstream' : 'unknown',
   };
-  let estimatedCost = 0;
-  let billingDetails: unknown = null;
+  const initialResult = {
+    resolvedUsage,
+    estimatedCost: 0,
+    billingDetails: null as unknown,
+  };
 
   if (config.proxyLowLatencyMode) {
     runProxySideEffect('tokenRouter.recordSuccess', () => tokenRouter.recordSuccess(
@@ -391,97 +394,99 @@ export async function recordSurfaceSuccess(input: {
       0,
       input.modelName,
     ));
-    return {
-      resolvedUsage,
-      estimatedCost,
-      billingDetails,
-    };
+    return initialResult;
   }
 
-  try {
-    resolvedUsage = await resolveProxyUsageWithSelfLogFallback({
-      site: input.selected.site,
-      account: input.selected.account,
-      tokenValue: input.selected.tokenValue,
-      tokenName: input.selected.tokenName,
-      modelName: input.modelName,
-      requestStartedAtMs: input.requestStartedAtMs,
-      requestEndedAtMs: input.requestStartedAtMs + input.latencyMs,
-      localLatencyMs: input.latencyMs,
-      upstreamUsagePresent: hasUpstreamUsage,
-      usage: {
-        promptTokens: input.parsedUsage.promptTokens,
-        completionTokens: input.parsedUsage.completionTokens,
-        totalTokens: input.parsedUsage.totalTokens,
-      },
-    });
-    const billing = await resolveProxyLogBilling({
-      site: input.selected.site,
-      account: input.selected.account,
-      modelName: input.modelName,
-      parsedUsage: input.parsedUsage,
-      resolvedUsage,
-    });
-    estimatedCost = billing.estimatedCost;
-    billingDetails = billing.billingDetails;
-  } catch (error) {
-    if (!input.bestEffortMetrics) {
-      throw error;
-    }
-    console.error(input.bestEffortMetrics.errorLabel, error);
-  }
+  runProxySideEffect('proxy.success.bookkeeping', async () => {
+    let successUsage = resolvedUsage;
+    let estimatedCost = 0;
+    let billingDetails: unknown = null;
 
-  runProxySideEffect('tokenRouter.recordSuccess', () => tokenRouter.recordSuccess(
-    input.selected.channel.id,
-    input.latencyMs,
-    estimatedCost,
-    input.modelName,
-  ));
-  input.recordDownstreamCost?.(estimatedCost);
-  const logTokens = resolvedUsage.usageSource === 'unknown'
-    ? {
-      promptTokens: null,
-      completionTokens: null,
-      totalTokens: null,
+    try {
+      successUsage = await resolveProxyUsageWithSelfLogFallback({
+        site: input.selected.site,
+        account: input.selected.account,
+        tokenValue: input.selected.tokenValue,
+        tokenName: input.selected.tokenName,
+        modelName: input.modelName,
+        requestStartedAtMs: input.requestStartedAtMs,
+        requestEndedAtMs: input.requestStartedAtMs + input.latencyMs,
+        localLatencyMs: input.latencyMs,
+        upstreamUsagePresent: hasUpstreamUsage,
+        usage: {
+          promptTokens: input.parsedUsage.promptTokens,
+          completionTokens: input.parsedUsage.completionTokens,
+          totalTokens: input.parsedUsage.totalTokens,
+        },
+      });
+      const billing = await resolveProxyLogBilling({
+        site: input.selected.site,
+        account: input.selected.account,
+        modelName: input.modelName,
+        parsedUsage: input.parsedUsage,
+        resolvedUsage: successUsage,
+      });
+      estimatedCost = billing.estimatedCost;
+      billingDetails = billing.billingDetails;
+    } catch (error) {
+      if (!input.bestEffortMetrics) {
+        throw error;
+      }
+      console.error(input.bestEffortMetrics.errorLabel, error);
     }
-    : {
-      promptTokens: resolvedUsage.promptTokens,
-      completionTokens: resolvedUsage.completionTokens,
-      totalTokens: resolvedUsage.totalTokens,
-    };
-  await input.logSuccess({
-    selected: input.selected,
-    modelRequested: input.requestedModel,
-    status: 'success',
-    httpStatus: 200,
-    isStream: input.isStream ?? null,
-    firstByteLatencyMs: input.firstByteLatencyMs ?? null,
-    latencyMs: input.latencyMs,
-    errorMessage: null,
-    retryCount: input.retryCount,
-    promptTokens: logTokens.promptTokens,
-    completionTokens: logTokens.completionTokens,
-    totalTokens: logTokens.totalTokens,
-    usageSource: resolvedUsage.usageSource,
-    estimatedCost,
-    billingDetails,
-    upstreamPath: input.upstreamPath,
+
+    const logTokens = successUsage.usageSource === 'unknown'
+      ? {
+        promptTokens: null,
+        completionTokens: null,
+        totalTokens: null,
+      }
+      : {
+        promptTokens: successUsage.promptTokens,
+        completionTokens: successUsage.completionTokens,
+        totalTokens: successUsage.totalTokens,
+      };
+
+    const writes = await Promise.allSettled([
+      tokenRouter.recordSuccess(
+        input.selected.channel.id,
+        input.latencyMs,
+        estimatedCost,
+        input.modelName,
+      ),
+      Promise.resolve().then(() => input.recordDownstreamCost?.(estimatedCost)),
+      input.logSuccess({
+        selected: input.selected,
+        modelRequested: input.requestedModel,
+        status: 'success',
+        httpStatus: 200,
+        isStream: input.isStream ?? null,
+        firstByteLatencyMs: input.firstByteLatencyMs ?? null,
+        latencyMs: input.latencyMs,
+        errorMessage: null,
+        retryCount: input.retryCount,
+        promptTokens: logTokens.promptTokens,
+        completionTokens: logTokens.completionTokens,
+        totalTokens: logTokens.totalTokens,
+        usageSource: successUsage.usageSource,
+        estimatedCost,
+        billingDetails,
+        upstreamPath: input.upstreamPath,
+      }),
+      input.upstreamHeaders
+        ? recordOauthQuotaHeadersSnapshot({
+          accountId: input.selected.account.id,
+          headers: input.upstreamHeaders,
+        })
+        : Promise.resolve(),
+    ]);
+    const failedWrite = writes.find((write): write is PromiseRejectedResult => write.status === 'rejected');
+    if (failedWrite) {
+      throw failedWrite.reason;
+    }
   });
 
-  if (input.upstreamHeaders) {
-    void recordOauthQuotaHeadersSnapshot({
-      accountId: input.selected.account.id,
-      headers: input.upstreamHeaders,
-    }).catch((error) => {
-      console.warn('[proxy/shared] failed to record oauth quota headers', error);
-    });
-  }
-
-  return {
-    resolvedUsage,
-    estimatedCost,
-    billingDetails,
-  };
+  return initialResult;
 }
 
 export function createSurfaceFailureToolkit(input: {

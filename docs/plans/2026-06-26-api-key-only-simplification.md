@@ -200,16 +200,16 @@
   - [x] 新增环境变量和运行时设置，例如 `PROXY_LOW_LATENCY_MODE=true`。
   - [x] 明确低延迟模式下允许跳过：代理日志、下游 Key 用量统计、成本统计、self-log usage fallback、失败事件、通知、debug trace。
   - [x] 配置默认值保持兼容：默认不开启，开启后优先速度。
-- [ ] 优化代理成功路径。
-  - [ ] 拆分 `src/server/proxy-core/surfaces/sharedSurface.ts` 的 `recordSurfaceSuccess()`。
-  - [ ] 响应前只保留必要的内存状态更新；日志、计费、用量、持久化全部后台执行或跳过。
-  - [ ] 非流式 `chatSurface.ts` / `openAiResponsesSurface.ts` 应先 `reply.send()`，再异步做 success bookkeeping。
-  - [ ] 流式请求在 `reply.raw.end()` 后异步做 success bookkeeping，不阻塞关闭响应。
+- [x] 优化代理成功路径。
+  - [x] 拆分 `src/server/proxy-core/surfaces/sharedSurface.ts` 的 `recordSurfaceSuccess()`。
+  - [x] 响应前只保留必要的内存状态更新；日志、计费、用量、持久化全部后台执行或跳过。
+  - [x] 非流式 `chatSurface.ts` / `openAiResponsesSurface.ts` 应先 `reply.send()`，再异步做 success bookkeeping。
+  - [x] 流式请求在 `reply.raw.end()` 后异步做 success bookkeeping，不阻塞关闭响应。
   - [x] `tokenRouter.recordSuccess()` 当前未 await，但缺少统一 catch；改为显式 best-effort，避免未处理 rejection。
 - [x] 跳过或异步化 self-log usage fallback。
   - [x] `resolveProxyUsageWithSelfLogFallback()` 可能额外请求上游 `/api/v1/usage` 或日志接口，低延迟模式下必须禁用。
   - [x] 如果上游响应没有 usage，低延迟模式直接记为 unknown，不再回查。
-  - [ ] 成本估算可在后台做，或直接跳过。
+  - [x] 成本估算可在后台做，或直接跳过。
 - [ ] 优化代理失败路径。
   - [x] `createSurfaceFailureToolkit().handleUpstreamFailure()` 不应在返回前等待 `tokenRouter.recordFailure()` 和失败日志。
   - [ ] `tokenRouter.recordFailure()` 拆成内存 patch 和异步持久化；重试选择依赖内存状态，不等数据库。
@@ -233,7 +233,7 @@
   - [ ] 所有日志、事件、通知、统计写库统一通过该工具执行。
   - [x] 工具需要 catch 错误并限频打印，避免后台失败刷屏。
 - [ ] 增加性能回归测试。
-  - [ ] 用 mock 慢数据库验证非流式代理不会等待日志写入后才 `reply.send()`。
+  - [x] 用 mock 慢数据库验证非流式代理不会等待日志写入后才 `reply.send()`。
   - [x] 用 mock 慢 `consumeManagedKeyRequest()` 验证认证后不阻塞上游转发。
   - [x] 用 mock 慢 `refreshModelsAndRebuildRoutes()` 验证无通道请求不会同步等待刷新完成。
   - [ ] 用 mock 慢 self-log endpoint 验证低延迟模式不会访问 self-log。
