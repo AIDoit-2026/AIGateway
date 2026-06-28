@@ -213,7 +213,7 @@
 - [ ] 优化代理失败路径。
   - [x] `createSurfaceFailureToolkit().handleUpstreamFailure()` 不应在返回前等待 `tokenRouter.recordFailure()` 和失败日志。
   - [ ] `tokenRouter.recordFailure()` 拆成内存 patch 和异步持久化；重试选择依赖内存状态，不等数据库。
-  - [ ] `recordStreamFailure()`、失败代理日志、失败事件、通知全部 best-effort。
+  - [x] `recordStreamFailure()`、失败代理日志、失败事件、通知全部 best-effort。
   - [x] `reportProxyAllFailed()` 和 `reportTokenExpired()` 在代理路径里改为后台执行；低延迟模式下可完全跳过通知。
 - [ ] 优化认证和下游 Key 统计。
   - [x] `authorizeDownstreamToken()` 为托管下游 Key 增加短 TTL 内存缓存，并在下游 Key 增删改时失效。
@@ -222,19 +222,19 @@
   - [ ] 如果只使用全局 `PROXY_TOKEN`，确认认证路径不触发数据库。
 - [ ] 优化无通道和路由刷新。
   - [x] `selectProxyChannelForAttempt()` 中的 `refreshModelsAndRebuildRoutes()` 不再同步阻塞代理请求。
-  - [ ] 无通道时后台触发单飞路由刷新，当前请求快速返回 503。
-  - [ ] 增加节流，避免大量请求同时触发路由刷新。
+  - [x] 无通道时后台触发单飞路由刷新，当前请求快速返回 503。
+  - [x] 增加节流，避免大量请求同时触发路由刷新。
 - [ ] 优化 proxy debug trace。
   - [x] 低延迟模式强制不创建 debug trace。
-  - [ ] 即使开启 debug trace，也优先改为队列写入，不阻塞代理响应。
-  - [ ] 捕获 response body 的逻辑不得 clone/read 热路径响应，除非明确开启调试。
+  - [x] 即使开启 debug trace，也优先改为队列写入，不阻塞代理响应。
+  - [x] 捕获 response body 的逻辑不得 clone/read 热路径响应，除非明确开启调试。
 - [x] 增加后台队列或 best-effort 工具。
   - [x] 建立统一 `runProxySideEffect()` / `enqueueProxySideEffect()` 帮助函数。
   - [ ] 所有日志、事件、通知、统计写库统一通过该工具执行。
   - [x] 工具需要 catch 错误并限频打印，避免后台失败刷屏。
 - [ ] 增加性能回归测试。
   - [ ] 用 mock 慢数据库验证非流式代理不会等待日志写入后才 `reply.send()`。
-  - [ ] 用 mock 慢 `consumeManagedKeyRequest()` 验证认证后不阻塞上游转发。
+  - [x] 用 mock 慢 `consumeManagedKeyRequest()` 验证认证后不阻塞上游转发。
   - [x] 用 mock 慢 `refreshModelsAndRebuildRoutes()` 验证无通道请求不会同步等待刷新完成。
   - [ ] 用 mock 慢 self-log endpoint 验证低延迟模式不会访问 self-log。
   - [ ] 覆盖低延迟模式开关关闭时仍保留原统计能力。

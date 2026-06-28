@@ -1,4 +1,5 @@
 import { readRuntimeResponseText } from '../proxy-core/executors/types.js';
+import { config } from '../config.js';
 import type {
   EndpointAttemptSuccessContext,
 } from '../proxy-core/orchestration/endpointFlow.js';
@@ -12,6 +13,7 @@ import {
   updateProxyDebugTraceSelection,
   type ProxyDebugTraceSession,
 } from './proxyDebugTraceStore.js';
+import { runProxySideEffect } from './proxySideEffect.js';
 
 type MutableProxyDebugTraceSession = ProxyDebugTraceSession & {
   nextAttemptIndex?: number;
@@ -26,6 +28,10 @@ function parseDebugTextPayload(rawText: string): unknown {
   }
 }
 
+function enqueueProxyDebugTraceWrite(label: string, fn: () => Promise<unknown>): void {
+  runProxySideEffect(`proxy-debug.${label}`, fn);
+}
+
 export async function startSurfaceProxyDebugTrace(input: {
   downstreamPath: string;
   clientKind?: string | null;
@@ -36,6 +42,7 @@ export async function startSurfaceProxyDebugTrace(input: {
   requestHeaders?: Record<string, unknown>;
   requestBody?: unknown;
 }): Promise<ProxyDebugTraceSession | null> {
+  if (config.proxyLowLatencyMode) return null;
   try {
     return await startProxyDebugTraceSession(input);
   } catch (error) {
@@ -49,11 +56,7 @@ export async function safeUpdateSurfaceProxyDebugSelection(
   input: Parameters<typeof updateProxyDebugTraceSelection>[1],
 ): Promise<void> {
   if (!session) return;
-  try {
-    await updateProxyDebugTraceSelection(session.traceId, input);
-  } catch (error) {
-    console.warn('[proxy-debug] failed to update selection', error);
-  }
+  enqueueProxyDebugTraceWrite('updateSelection', () => updateProxyDebugTraceSelection(session.traceId, input));
 }
 
 export async function safeUpdateSurfaceProxyDebugCandidates(
@@ -61,11 +64,7 @@ export async function safeUpdateSurfaceProxyDebugCandidates(
   input: Parameters<typeof updateProxyDebugTraceCandidates>[1],
 ): Promise<void> {
   if (!session) return;
-  try {
-    await updateProxyDebugTraceCandidates(session.traceId, input);
-  } catch (error) {
-    console.warn('[proxy-debug] failed to update endpoint candidates', error);
-  }
+  enqueueProxyDebugTraceWrite('updateCandidates', () => updateProxyDebugTraceCandidates(session.traceId, input));
 }
 
 export async function safeInsertSurfaceProxyDebugAttempt(
@@ -73,8 +72,7 @@ export async function safeInsertSurfaceProxyDebugAttempt(
   input: Omit<Parameters<typeof insertProxyDebugAttempt>[0], 'traceId'>,
 ): Promise<void> {
   if (!session) return;
-  try {
-    await insertProxyDebugAttempt({
+  enqueueProxyDebugTraceWrite('insertAttempt', () => insertProxyDebugAttempt({
       ...input,
       traceId: session.traceId,
       requestHeaders: session.options.captureHeaders ? input.requestHeaders : null,
@@ -82,10 +80,7 @@ export async function safeInsertSurfaceProxyDebugAttempt(
       responseHeaders: session.options.captureHeaders ? input.responseHeaders : null,
       responseBody: session.options.captureBodies ? input.responseBody : null,
       maxBodyBytes: session.options.maxBodyBytes,
-    });
-  } catch (error) {
-    console.warn('[proxy-debug] failed to insert attempt', error);
-  }
+    }));
 }
 
 export function reserveSurfaceProxyDebugAttemptBase(
@@ -108,16 +103,12 @@ export async function safeFinalizeSurfaceProxyDebugTrace(
   input: Parameters<typeof finalizeProxyDebugTrace>[1],
 ): Promise<void> {
   if (!session) return;
-  try {
-    await finalizeProxyDebugTrace(session.traceId, {
+  enqueueProxyDebugTraceWrite('finalizeTrace', () => finalizeProxyDebugTrace(session.traceId, {
       ...input,
       finalResponseHeaders: session.options.captureHeaders ? input.finalResponseHeaders : null,
       finalResponseBody: session.options.captureBodies ? input.finalResponseBody : null,
       maxBodyBytes: session.options.maxBodyBytes,
-    });
-  } catch (error) {
-    console.warn('[proxy-debug] failed to finalize trace', error);
-  }
+    }));
 }
 
 export async function safeUpdateSurfaceProxyDebugAttempt(
@@ -126,17 +117,14 @@ export async function safeUpdateSurfaceProxyDebugAttempt(
   input: Parameters<typeof updateProxyDebugAttempt>[2],
 ): Promise<void> {
   if (!session) return;
-  try {
-    await updateProxyDebugAttempt(session.traceId, attemptIndex, input);
-  } catch (error) {
-    console.warn('[proxy-debug] failed to update attempt', error);
-  }
+  enqueueProxyDebugTraceWrite('updateAttempt', () => updateProxyDebugAttempt(session.traceId, attemptIndex, input));
 }
 
 export async function captureSurfaceProxyDebugSuccessResponseBody(
   session: ProxyDebugTraceSession | null,
   ctx: EndpointAttemptSuccessContext,
 ): Promise<unknown> {
+  if (config.proxyLowLatencyMode) return null;
   if (!session?.options.captureBodies) return null;
 
   const contentType = (ctx.response.headers.get('content-type') || '').toLowerCase();

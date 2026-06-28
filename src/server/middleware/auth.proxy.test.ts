@@ -87,6 +87,41 @@ describe('proxyAuthMiddleware', () => {
     await app.close();
   });
 
+  it('does not block managed key authentication on slow request usage writes', async () => {
+    authorizeDownstreamTokenMock.mockResolvedValue({
+      ok: true,
+      source: 'managed',
+      token: 'sk-managed-001',
+      key: { id: 12, name: 'project-key' },
+      policy: null,
+    });
+    consumeManagedKeyRequestMock.mockImplementation(() => new Promise(() => {}));
+
+    const { proxyAuthMiddleware, getProxyAuthContext } = await import('./auth.js');
+    const app = Fastify();
+    app.addHook('onRequest', proxyAuthMiddleware);
+    app.get('/v1/ping', async (request) => ({
+      auth: getProxyAuthContext(request),
+    }));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/ping',
+      headers: { Authorization: 'Bearer sk-managed-001' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      auth: {
+        source: 'managed',
+        keyId: 12,
+      },
+    });
+    await Promise.resolve();
+    expect(consumeManagedKeyRequestMock).toHaveBeenCalledWith(12);
+    await app.close();
+  });
+
   it('skips managed key request usage in low latency mode', async () => {
     configMock.config.proxyLowLatencyMode = true;
     authorizeDownstreamTokenMock.mockResolvedValue({

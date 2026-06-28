@@ -11,6 +11,31 @@ type SelectedChannel = Awaited<ReturnType<typeof tokenRouter.selectChannel>>;
 export const TESTER_FORCED_CHANNEL_HEADER = 'x-metapi-tester-forced-channel-id';
 export const TESTER_REQUEST_HEADER = 'x-metapi-tester-request';
 
+const LOW_LATENCY_ROUTE_REFRESH_THROTTLE_MS = 30_000;
+let lowLatencyRouteRefreshInFlight = false;
+let lastLowLatencyRouteRefreshAtMs = 0;
+
+export function resetLowLatencyRouteRefreshStateForTests(): void {
+  lowLatencyRouteRefreshInFlight = false;
+  lastLowLatencyRouteRefreshAtMs = 0;
+}
+
+function queueLowLatencyRouteRefresh(): void {
+  const now = Date.now();
+  if (lowLatencyRouteRefreshInFlight) return;
+  if (now - lastLowLatencyRouteRefreshAtMs < LOW_LATENCY_ROUTE_REFRESH_THROTTLE_MS) return;
+
+  lowLatencyRouteRefreshInFlight = true;
+  lastLowLatencyRouteRefreshAtMs = now;
+  runProxySideEffect('routeRefresh.refreshModelsAndRebuildRoutes', async () => {
+    try {
+      await routeRefreshWorkflow.refreshModelsAndRebuildRoutes();
+    } finally {
+      lowLatencyRouteRefreshInFlight = false;
+    }
+  });
+}
+
 function headerValueEquals(
   headers: Record<string, unknown> | undefined,
   expectedKey: string,
@@ -109,9 +134,7 @@ export async function selectProxyChannelForAttempt(input: {
     if (input.retryCount > 0 || refreshedRoutes) return false;
     refreshedRoutes = true;
     if (config.proxyLowLatencyMode) {
-      runProxySideEffect('routeRefresh.refreshModelsAndRebuildRoutes', () => (
-        routeRefreshWorkflow.refreshModelsAndRebuildRoutes()
-      ));
+      queueLowLatencyRouteRefresh();
       return false;
     }
     try {
