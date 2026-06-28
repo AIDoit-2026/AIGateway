@@ -4,6 +4,7 @@ import { db, hasProxyLogDownstreamApiKeyIdColumn, runtimeDbDialect, schema } fro
 import { insertAndGetById } from '../../db/insertHelpers.js';
 import {
   getDownstreamApiKeyById,
+  invalidateDownstreamTokenAuthCache,
   listDownstreamApiKeys,
   normalizeDownstreamApiKeyPayload,
   toDownstreamApiKeyPolicyView,
@@ -533,6 +534,7 @@ export async function downstreamApiKeysRoutes(app: FastifyInstance) {
         insertErrorMessage: '创建失败',
         loadErrorMessage: '创建失败',
       });
+      invalidateDownstreamTokenAuthCache();
 
       return {
         success: true,
@@ -628,6 +630,10 @@ export async function downstreamApiKeysRoutes(app: FastifyInstance) {
         excludedCredentialRefs: toPersistenceJson(normalized.excludedCredentialRefs),
         updatedAt: nowIso,
       }).where(eq(schema.downstreamApiKeys.id, id)).run();
+      invalidateDownstreamTokenAuthCache(existing.key);
+      if (normalized.key !== existing.key) {
+        invalidateDownstreamTokenAuthCache(normalized.key);
+      }
 
       const updated = await getDownstreamApiKeyById(id);
       return {
@@ -658,6 +664,7 @@ export async function downstreamApiKeysRoutes(app: FastifyInstance) {
       usedRequests: 0,
       updatedAt: new Date().toISOString(),
     }).where(eq(schema.downstreamApiKeys.id, id)).run();
+    invalidateDownstreamTokenAuthCache(existing.key);
 
     return {
       success: true,
@@ -679,6 +686,7 @@ export async function downstreamApiKeysRoutes(app: FastifyInstance) {
     await db.delete(schema.downstreamApiKeys)
       .where(eq(schema.downstreamApiKeys.id, id))
       .run();
+    invalidateDownstreamTokenAuthCache(existing.key);
 
     return { success: true };
   });
@@ -759,6 +767,7 @@ export async function downstreamApiKeysRoutes(app: FastifyInstance) {
           }).where(eq(schema.downstreamApiKeys.id, id)).run();
         }
 
+        invalidateDownstreamTokenAuthCache(existing.key);
         successIds.push(id);
       } catch (error: any) {
         failedItems.push({ id, message: error?.message || 'Batch operation failed' });

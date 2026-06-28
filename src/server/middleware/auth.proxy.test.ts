@@ -3,16 +3,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authorizeDownstreamTokenMock = vi.fn();
 const consumeManagedKeyRequestMock = vi.fn();
+const configMock = vi.hoisted(() => ({
+  config: {
+    proxyLowLatencyMode: false,
+    adminIpAllowlist: [],
+    authToken: 'admin-token',
+  },
+}));
 
 vi.mock('../services/downstreamApiKeyService.js', () => ({
   authorizeDownstreamToken: (...args: unknown[]) => authorizeDownstreamTokenMock(...args),
   consumeManagedKeyRequest: (...args: unknown[]) => consumeManagedKeyRequestMock(...args),
 }));
 
+vi.mock('../config.js', () => configMock);
+
 describe('proxyAuthMiddleware', () => {
   beforeEach(() => {
     authorizeDownstreamTokenMock.mockReset();
     consumeManagedKeyRequestMock.mockReset();
+    configMock.config.proxyLowLatencyMode = false;
   });
 
   afterEach(() => {
@@ -72,6 +82,41 @@ describe('proxyAuthMiddleware', () => {
       owner: {
         ownerType: 'managed_key',
         ownerId: '12',
+      },
+    });
+    await app.close();
+  });
+
+  it('skips managed key request usage in low latency mode', async () => {
+    configMock.config.proxyLowLatencyMode = true;
+    authorizeDownstreamTokenMock.mockResolvedValue({
+      ok: true,
+      source: 'managed',
+      token: 'sk-managed-001',
+      key: { id: 12, name: 'project-key' },
+      policy: null,
+    });
+
+    const { proxyAuthMiddleware, getProxyAuthContext } = await import('./auth.js');
+    const app = Fastify();
+    app.addHook('onRequest', proxyAuthMiddleware);
+    app.get('/v1/ping', async (request) => ({
+      auth: getProxyAuthContext(request),
+    }));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/ping',
+      headers: { Authorization: 'Bearer sk-managed-001' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(consumeManagedKeyRequestMock).not.toHaveBeenCalled();
+    expect(res.json()).toMatchObject({
+      auth: {
+        source: 'managed',
+        keyId: 12,
+        keyName: 'project-key',
       },
     });
     await app.close();

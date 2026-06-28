@@ -51,6 +51,18 @@ export type DownstreamTokenAuthFailure = {
 
 export type DownstreamTokenAuthResult = DownstreamTokenAuthSuccess | DownstreamTokenAuthFailure;
 
+const DOWNSTREAM_AUTH_CACHE_TTL_MS = 3_000;
+const downstreamAuthCache = new Map<string, { expiresAtMs: number; result: DownstreamTokenAuthResult }>();
+
+export function invalidateDownstreamTokenAuthCache(token?: string | null): void {
+  const normalizedToken = normalizeToken(token || '');
+  if (normalizedToken) {
+    downstreamAuthCache.delete(normalizedToken);
+    return;
+  }
+  downstreamAuthCache.clear();
+}
+
 function isRegexModelPattern(pattern: string): boolean {
   return pattern.trim().toLowerCase().startsWith('re:');
 }
@@ -426,72 +438,85 @@ export async function authorizeDownstreamToken(token: string): Promise<Downstrea
     };
   }
 
+  const cached = downstreamAuthCache.get(normalizedToken);
+  if (cached && cached.expiresAtMs > Date.now()) {
+    return cached.result;
+  }
+
+  const cacheResult = (result: DownstreamTokenAuthResult): DownstreamTokenAuthResult => {
+    downstreamAuthCache.set(normalizedToken, {
+      expiresAtMs: Date.now() + DOWNSTREAM_AUTH_CACHE_TTL_MS,
+      result,
+    });
+    return result;
+  };
+
   const managed = await getManagedDownstreamApiKeyByToken(normalizedToken);
   if (managed) {
     if (!managed.enabled) {
-      return {
+      return cacheResult({
         ok: false,
         statusCode: 403,
         error: 'API key is disabled',
         reason: 'disabled',
-      };
+      });
     }
 
     if (managed.expiresAt) {
       const expiresAtTs = Date.parse(managed.expiresAt);
       if (Number.isFinite(expiresAtTs) && expiresAtTs <= Date.now()) {
-        return {
+        return cacheResult({
           ok: false,
           statusCode: 403,
           error: 'API key is expired',
           reason: 'expired',
-        };
+        });
       }
     }
 
     if (managed.maxCost !== null && managed.usedCost >= managed.maxCost) {
-      return {
+      return cacheResult({
         ok: false,
         statusCode: 403,
         error: 'API key has exceeded max cost',
         reason: 'over_cost',
-      };
+      });
     }
 
     if (managed.maxRequests !== null && managed.usedRequests >= managed.maxRequests) {
-      return {
+      return cacheResult({
         ok: false,
         statusCode: 403,
         error: 'API key has exceeded max requests',
         reason: 'over_requests',
-      };
+      });
     }
 
-    return {
+    return cacheResult({
       ok: true,
       source: 'managed',
       token: normalizedToken,
       key: managed,
       policy: toPolicyFromView(managed),
-    };
+    });
   }
 
   if (normalizedToken === config.proxyToken) {
-    return {
+    return cacheResult({
       ok: true,
       source: 'global',
       token: normalizedToken,
       key: null,
       policy: getDefaultGlobalPolicy(),
-    };
+    });
   }
 
-  return {
+  return cacheResult({
     ok: false,
     statusCode: 403,
     error: 'Invalid API key',
     reason: 'invalid',
-  };
+  });
 }
 
 export async function consumeManagedKeyRequest(keyId: number): Promise<void> {

@@ -1,8 +1,10 @@
 import * as routeRefreshWorkflow from '../services/routeRefreshWorkflow.js';
+import { config } from '../config.js';
 import { proxyChannelCoordinator } from '../services/proxyChannelCoordinator.js';
 import { canRetryProxyChannel } from '../services/proxyChannelRetry.js';
 import type { DownstreamRoutingPolicy } from '../services/downstreamPolicyTypes.js';
 import { tokenRouter } from '../services/tokenRouter.js';
+import { runProxySideEffect } from '../services/proxySideEffect.js';
 
 type SelectedChannel = Awaited<ReturnType<typeof tokenRouter.selectChannel>>;
 
@@ -106,6 +108,12 @@ export async function selectProxyChannelForAttempt(input: {
   const refreshRoutesForFirstAttempt = async (): Promise<boolean> => {
     if (input.retryCount > 0 || refreshedRoutes) return false;
     refreshedRoutes = true;
+    if (config.proxyLowLatencyMode) {
+      runProxySideEffect('routeRefresh.refreshModelsAndRebuildRoutes', () => (
+        routeRefreshWorkflow.refreshModelsAndRebuildRoutes()
+      ));
+      return false;
+    }
     try {
       await routeRefreshWorkflow.refreshModelsAndRebuildRoutes();
       return true;
@@ -126,12 +134,14 @@ export async function selectProxyChannelForAttempt(input: {
       );
       if (!selected) {
         const refreshSucceeded = await refreshRoutesForFirstAttempt();
-        selected = await tokenRouter.selectPreferredChannel(
-          input.requestedModel,
-          preferredChannelId,
-          input.downstreamPolicy,
-          input.excludeChannelIds,
-        );
+        if (refreshSucceeded || !config.proxyLowLatencyMode) {
+          selected = await tokenRouter.selectPreferredChannel(
+            input.requestedModel,
+            preferredChannelId,
+            input.downstreamPolicy,
+            input.excludeChannelIds,
+          );
+        }
         if (!selected && refreshSucceeded) {
           proxyChannelCoordinator.clearStickyChannel(input.stickySessionKey, preferredChannelId);
         }
@@ -150,8 +160,10 @@ export async function selectProxyChannelForAttempt(input: {
   }
 
   if (!selected && input.retryCount === 0 && !refreshedRoutes) {
-    await refreshRoutesForFirstAttempt();
-    selected = await tokenRouter.selectChannel(input.requestedModel, input.downstreamPolicy);
+    const refreshSucceeded = await refreshRoutesForFirstAttempt();
+    if (refreshSucceeded || !config.proxyLowLatencyMode) {
+      selected = await tokenRouter.selectChannel(input.requestedModel, input.downstreamPolicy);
+    }
   }
 
   return selected;

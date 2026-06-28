@@ -211,17 +211,17 @@
   - [x] 如果上游响应没有 usage，低延迟模式直接记为 unknown，不再回查。
   - [ ] 成本估算可在后台做，或直接跳过。
 - [ ] 优化代理失败路径。
-  - [ ] `createSurfaceFailureToolkit().handleUpstreamFailure()` 不应在返回前等待 `tokenRouter.recordFailure()` 和失败日志。
+  - [x] `createSurfaceFailureToolkit().handleUpstreamFailure()` 不应在返回前等待 `tokenRouter.recordFailure()` 和失败日志。
   - [ ] `tokenRouter.recordFailure()` 拆成内存 patch 和异步持久化；重试选择依赖内存状态，不等数据库。
   - [ ] `recordStreamFailure()`、失败代理日志、失败事件、通知全部 best-effort。
-  - [ ] `reportProxyAllFailed()` 和 `reportTokenExpired()` 在代理路径里改为后台执行；低延迟模式下可完全跳过通知。
+  - [x] `reportProxyAllFailed()` 和 `reportTokenExpired()` 在代理路径里改为后台执行；低延迟模式下可完全跳过通知。
 - [ ] 优化认证和下游 Key 统计。
-  - [ ] `authorizeDownstreamToken()` 为托管下游 Key 增加短 TTL 内存缓存，并在下游 Key 增删改时失效。
-  - [ ] `proxyAuthMiddleware()` 中的 `consumeManagedKeyRequest()` 不再 await；低延迟模式下可跳过请求次数统计。
-  - [ ] `recordManagedKeyCostUsage()` 低延迟模式下跳过或后台批量聚合。
+  - [x] `authorizeDownstreamToken()` 为托管下游 Key 增加短 TTL 内存缓存，并在下游 Key 增删改时失效。
+  - [x] `proxyAuthMiddleware()` 中的 `consumeManagedKeyRequest()` 不再 await；低延迟模式下可跳过请求次数统计。
+  - [x] `recordManagedKeyCostUsage()` 低延迟模式下跳过或后台批量聚合。
   - [ ] 如果只使用全局 `PROXY_TOKEN`，确认认证路径不触发数据库。
 - [ ] 优化无通道和路由刷新。
-  - [ ] `selectProxyChannelForAttempt()` 中的 `refreshModelsAndRebuildRoutes()` 不再同步阻塞代理请求。
+  - [x] `selectProxyChannelForAttempt()` 中的 `refreshModelsAndRebuildRoutes()` 不再同步阻塞代理请求。
   - [ ] 无通道时后台触发单飞路由刷新，当前请求快速返回 503。
   - [ ] 增加节流，避免大量请求同时触发路由刷新。
 - [ ] 优化 proxy debug trace。
@@ -235,7 +235,7 @@
 - [ ] 增加性能回归测试。
   - [ ] 用 mock 慢数据库验证非流式代理不会等待日志写入后才 `reply.send()`。
   - [ ] 用 mock 慢 `consumeManagedKeyRequest()` 验证认证后不阻塞上游转发。
-  - [ ] 用 mock 慢 `refreshModelsAndRebuildRoutes()` 验证无通道请求不会同步等待刷新完成。
+  - [x] 用 mock 慢 `refreshModelsAndRebuildRoutes()` 验证无通道请求不会同步等待刷新完成。
   - [ ] 用 mock 慢 self-log endpoint 验证低延迟模式不会访问 self-log。
   - [ ] 覆盖低延迟模式开关关闭时仍保留原统计能力。
 - [ ] 增加手工 benchmark。

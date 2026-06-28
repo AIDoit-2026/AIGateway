@@ -542,6 +542,24 @@ export function createSurfaceFailureToolkit(input: {
     runProxySideEffect(`proxy/${input.warningScope}/${label}`, fn);
   };
 
+  const recordFailure = async (
+    label: string,
+    selected: SurfaceSelectedChannel,
+    context: Parameters<typeof tokenRouter.recordFailure>[1],
+  ) => {
+    const run = () => tokenRouter.recordFailure(selected.channel.id, context);
+    if (config.proxyLowLatencyMode) {
+      runProxySideEffect(`proxy/${input.warningScope}/${label}`, run);
+      return;
+    }
+    await run();
+  };
+
+  const logFailure = async (args: Parameters<typeof log>[0]) => {
+    if (config.proxyLowLatencyMode) return;
+    await log(args);
+  };
+
   return {
     log,
     async handleUpstreamFailure(args: {
@@ -557,12 +575,12 @@ export function createSurfaceFailureToolkit(input: {
       retryCount: number;
     }): Promise<SurfaceFailureOutcome> {
       const rawErrText = args.rawErrText || args.errText;
-      await tokenRouter.recordFailure(args.selected.channel.id, {
+      await recordFailure('record upstream failure', args.selected, {
         status: args.status,
         errorText: rawErrText,
         modelName: args.modelName,
       });
-      await log({
+      await logFailure({
         selected: args.selected,
         modelRequested: args.requestedModel,
         status: 'failed',
@@ -624,12 +642,12 @@ export function createSurfaceFailureToolkit(input: {
       totalTokens?: number | null;
       upstreamPath?: string | null;
     }): Promise<SurfaceFailureOutcome> {
-      await tokenRouter.recordFailure(args.selected.channel.id, {
+      await recordFailure('record detected failure', args.selected, {
         status: args.failure.status,
         errorText: args.failure.reason,
         modelName: args.modelName,
       });
-      await log({
+      await logFailure({
         selected: args.selected,
         modelRequested: args.requestedModel,
         status: 'failed',
@@ -677,11 +695,11 @@ export function createSurfaceFailureToolkit(input: {
       latencyMs: number;
       retryCount: number;
     }): Promise<SurfaceFailureOutcome> {
-      await tokenRouter.recordFailure(args.selected.channel.id, {
+      await recordFailure('record execution error', args.selected, {
         errorText: args.errorMessage,
         modelName: args.modelName,
       });
-      await log({
+      await logFailure({
         selected: args.selected,
         modelRequested: args.requestedModel,
         status: 'failed',
@@ -731,18 +749,18 @@ export function createSurfaceFailureToolkit(input: {
     }) {
       const errorMessage = args.errorMessage || 'stream processing failed';
       if (typeof args.runtimeFailureStatus === 'number') {
-        await tokenRouter.recordFailure(args.selected.channel.id, {
+        await recordFailure('record stream runtime failure', args.selected, {
           status: args.runtimeFailureStatus,
           errorText: errorMessage,
           modelName: args.modelName,
         });
       } else {
-        await tokenRouter.recordFailure(args.selected.channel.id, {
+        await recordFailure('record stream failure', args.selected, {
           errorText: errorMessage,
           modelName: args.modelName,
         });
       }
-      await log({
+      await logFailure({
         selected: args.selected,
         modelRequested: args.requestedModel,
         status: 'failed',

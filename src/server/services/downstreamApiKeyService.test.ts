@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 
 type DbModule = typeof import('../db/index.js');
 type ServiceModule = typeof import('./downstreamApiKeyService.js');
@@ -33,6 +34,7 @@ describe('downstreamApiKeyService', () => {
     await db.delete(schema.downstreamApiKeys).run();
     await db.delete(schema.tokenRoutes).run();
     config.proxyToken = 'sk-global-proxy-token';
+    service.invalidateDownstreamTokenAuthCache();
   });
 
   afterAll(() => {
@@ -114,6 +116,28 @@ describe('downstreamApiKeyService', () => {
     expect(service.isModelAllowedByPolicy('claude-opus-4-6', result.policy)).toBe(true);
     expect(service.isModelAllowedByPolicy('gpt-4o-mini', result.policy)).toBe(true);
     expect(service.isModelAllowedByPolicy('gemini-2.0-flash', result.policy)).toBe(false);
+  });
+
+  it('caches downstream token authorization until explicitly invalidated', async () => {
+    const row = await db.insert(schema.downstreamApiKeys).values({
+      name: 'cached-key',
+      key: 'sk-cached-key',
+      enabled: true,
+    }).returning().get();
+
+    const first = await service.authorizeDownstreamToken(row.key);
+    expect(first.ok).toBe(true);
+
+    await db.update(schema.downstreamApiKeys).set({
+      enabled: false,
+    }).where(eq(schema.downstreamApiKeys.id, row.id)).run();
+
+    const cached = await service.authorizeDownstreamToken(row.key);
+    expect(cached.ok).toBe(true);
+
+    service.invalidateDownstreamTokenAuthCache(row.key);
+    const afterInvalidate = await service.authorizeDownstreamToken(row.key);
+    expect(afterInvalidate.ok).toBe(false);
   });
 
   it('keeps all explicitly selected supported models when list exceeds 200 items', () => {

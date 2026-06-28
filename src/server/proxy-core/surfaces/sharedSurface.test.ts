@@ -29,6 +29,13 @@ const acquireChannelLeaseMock = vi.fn();
 const buildStickySessionKeyMock = vi.fn();
 const consoleWarnMock = vi.spyOn(console, 'warn').mockImplementation(() => {});
 const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
+const configMock = vi.hoisted(() => ({
+  config: {
+    proxyLowLatencyMode: false,
+  },
+}));
+
+vi.mock('../../config.js', () => configMock);
 
 vi.mock('../../services/tokenRouter.js', () => ({
   tokenRouter: {
@@ -141,6 +148,7 @@ describe('selectSurfaceChannelForAttempt', () => {
     buildStickySessionKeyMock.mockReset();
     consoleWarnMock.mockClear();
     consoleErrorMock.mockClear();
+    configMock.config.proxyLowLatencyMode = false;
   });
 
   it('refreshes models and retries selectChannel on the first attempt when no channel is available', async () => {
@@ -646,6 +654,58 @@ describe('selectSurfaceChannelForAttempt', () => {
         },
       },
     });
+  });
+
+  it('does not wait for failure bookkeeping in low latency mode', async () => {
+    configMock.config.proxyLowLatencyMode = true;
+    shouldRetryProxyRequestMock.mockReturnValue(false);
+    isTokenExpiredErrorMock.mockReturnValue(true);
+    recordFailureMock.mockImplementation(() => new Promise(() => {}));
+
+    const { createSurfaceFailureToolkit } = await import('./sharedSurface.js');
+    const toolkit = createSurfaceFailureToolkit({
+      warningScope: 'responses',
+      downstreamPath: '/v1/responses',
+      maxRetries: 0,
+      clientContext: null,
+      downstreamApiKeyId: null,
+    });
+
+    await expect(toolkit.handleUpstreamFailure({
+      selected: {
+        channel: { id: 11, routeId: 22 },
+        account: { id: 33, username: 'oauth-user' },
+        site: { name: 'Codex OAuth' },
+        actualModel: 'upstream-model',
+      },
+      requestedModel: 'gpt-5.2',
+      modelName: 'upstream-model',
+      status: 401,
+      errText: 'expired token',
+      rawErrText: 'expired token',
+      latencyMs: 900,
+      retryCount: 0,
+    })).resolves.toEqual({
+      action: 'respond',
+      status: 401,
+      payload: {
+        error: {
+          message: 'expired token',
+          type: 'upstream_error',
+        },
+      },
+    });
+
+    await Promise.resolve();
+    expect(recordFailureMock).toHaveBeenCalledWith(11, {
+      status: 401,
+      errorText: 'expired token',
+      modelName: 'upstream-model',
+    });
+    expect(insertProxyLogMock).not.toHaveBeenCalled();
+    expect(recordOauthQuotaResetHintMock).not.toHaveBeenCalled();
+    expect(reportTokenExpiredMock).not.toHaveBeenCalled();
+    expect(reportProxyAllFailedMock).not.toHaveBeenCalled();
   });
 
   it('handles detected proxy failures through the shared failure toolkit', async () => {

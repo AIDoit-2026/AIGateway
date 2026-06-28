@@ -3,6 +3,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
 import { authorizeDownstreamToken, consumeManagedKeyRequest } from '../services/downstreamApiKeyService.js';
 import { EMPTY_DOWNSTREAM_ROUTING_POLICY, type DownstreamRoutingPolicy } from '../services/downstreamPolicyTypes.js';
+import { runProxySideEffect } from '../services/proxySideEffect.js';
 
 export interface ProxyAuthContext {
   token: string;
@@ -158,7 +159,10 @@ export async function proxyAuthMiddleware(request: FastifyRequest, reply: Fastif
   }
 
   if (authResult.source === 'managed' && authResult.key) {
-    await consumeManagedKeyRequest(authResult.key.id);
+    if (!config.proxyLowLatencyMode) {
+      const keyId = authResult.key.id;
+      runProxySideEffect('downstreamKey.consumeRequest', () => consumeManagedKeyRequest(keyId));
+    }
   }
 
   proxyAuthContextByRequest.set(request, {
