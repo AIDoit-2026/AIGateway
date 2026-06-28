@@ -196,19 +196,19 @@
 - `reportProxyAllFailed()` / `reportTokenExpired()` 会写事件、更新账号状态、发通知；这些不应阻塞代理响应。
 - proxy debug trace 默认关闭时影响小，但开启后多处 `safeInsert/Update/Finalize` 都是同步等待。
 
-- [ ] 增加低延迟模式配置。
-  - [ ] 新增环境变量和运行时设置，例如 `PROXY_LOW_LATENCY_MODE=true`。
-  - [ ] 明确低延迟模式下允许跳过：代理日志、下游 Key 用量统计、成本统计、self-log usage fallback、失败事件、通知、debug trace。
-  - [ ] 配置默认值保持兼容：默认不开启，开启后优先速度。
+- [x] 增加低延迟模式配置。
+  - [x] 新增环境变量和运行时设置，例如 `PROXY_LOW_LATENCY_MODE=true`。
+  - [x] 明确低延迟模式下允许跳过：代理日志、下游 Key 用量统计、成本统计、self-log usage fallback、失败事件、通知、debug trace。
+  - [x] 配置默认值保持兼容：默认不开启，开启后优先速度。
 - [ ] 优化代理成功路径。
   - [ ] 拆分 `src/server/proxy-core/surfaces/sharedSurface.ts` 的 `recordSurfaceSuccess()`。
   - [ ] 响应前只保留必要的内存状态更新；日志、计费、用量、持久化全部后台执行或跳过。
   - [ ] 非流式 `chatSurface.ts` / `openAiResponsesSurface.ts` 应先 `reply.send()`，再异步做 success bookkeeping。
   - [ ] 流式请求在 `reply.raw.end()` 后异步做 success bookkeeping，不阻塞关闭响应。
-  - [ ] `tokenRouter.recordSuccess()` 当前未 await，但缺少统一 catch；改为显式 best-effort，避免未处理 rejection。
-- [ ] 跳过或异步化 self-log usage fallback。
-  - [ ] `resolveProxyUsageWithSelfLogFallback()` 可能额外请求上游 `/api/v1/usage` 或日志接口，低延迟模式下必须禁用。
-  - [ ] 如果上游响应没有 usage，低延迟模式直接记为 unknown，不再回查。
+  - [x] `tokenRouter.recordSuccess()` 当前未 await，但缺少统一 catch；改为显式 best-effort，避免未处理 rejection。
+- [x] 跳过或异步化 self-log usage fallback。
+  - [x] `resolveProxyUsageWithSelfLogFallback()` 可能额外请求上游 `/api/v1/usage` 或日志接口，低延迟模式下必须禁用。
+  - [x] 如果上游响应没有 usage，低延迟模式直接记为 unknown，不再回查。
   - [ ] 成本估算可在后台做，或直接跳过。
 - [ ] 优化代理失败路径。
   - [ ] `createSurfaceFailureToolkit().handleUpstreamFailure()` 不应在返回前等待 `tokenRouter.recordFailure()` 和失败日志。
@@ -225,13 +225,13 @@
   - [ ] 无通道时后台触发单飞路由刷新，当前请求快速返回 503。
   - [ ] 增加节流，避免大量请求同时触发路由刷新。
 - [ ] 优化 proxy debug trace。
-  - [ ] 低延迟模式强制不创建 debug trace。
+  - [x] 低延迟模式强制不创建 debug trace。
   - [ ] 即使开启 debug trace，也优先改为队列写入，不阻塞代理响应。
   - [ ] 捕获 response body 的逻辑不得 clone/read 热路径响应，除非明确开启调试。
-- [ ] 增加后台队列或 best-effort 工具。
-  - [ ] 建立统一 `runProxySideEffect()` / `enqueueProxySideEffect()` 帮助函数。
+- [x] 增加后台队列或 best-effort 工具。
+  - [x] 建立统一 `runProxySideEffect()` / `enqueueProxySideEffect()` 帮助函数。
   - [ ] 所有日志、事件、通知、统计写库统一通过该工具执行。
-  - [ ] 工具需要 catch 错误并限频打印，避免后台失败刷屏。
+  - [x] 工具需要 catch 错误并限频打印，避免后台失败刷屏。
 - [ ] 增加性能回归测试。
   - [ ] 用 mock 慢数据库验证非流式代理不会等待日志写入后才 `reply.send()`。
   - [ ] 用 mock 慢 `consumeManagedKeyRequest()` 验证认证后不阻塞上游转发。

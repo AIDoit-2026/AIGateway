@@ -66,6 +66,16 @@ describe('buildConfig', () => {
     expect(config.codexResponsesWebsocketBeta).toBe('responses_websockets=2099-01-01');
   });
 
+  it('enables proxy low latency mode and forces debug traces off', () => {
+    const config = buildConfig({
+      PROXY_LOW_LATENCY_MODE: 'true',
+      PROXY_DEBUG_TRACE_ENABLED: 'true',
+    });
+
+    expect(config.proxyLowLatencyMode).toBe(true);
+    expect(config.proxyDebugTraceEnabled).toBe(false);
+  });
+
   it('accepts JSON request bodies larger than Fastify default 1 MiB', async () => {
     const app = Fastify(buildFastifyOptions(buildConfig({})));
     const largeText = 'a'.repeat(2 * 1024 * 1024);

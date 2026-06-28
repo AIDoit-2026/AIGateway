@@ -19,6 +19,8 @@ import { refreshOauthAccessTokenSingleflight } from '../../services/oauth/refres
 import { proxyChannelCoordinator } from '../../services/proxyChannelCoordinator.js';
 import { readRuntimeResponseText } from '../executors/types.js';
 import { selectProxyChannelForAttempt } from '../channelSelection.js';
+import { config } from '../../config.js';
+import { runProxySideEffect } from '../../services/proxySideEffect.js';
 
 type SelectedChannel = Awaited<ReturnType<typeof tokenRouter.selectChannel>>;
 type SurfaceWarningScope = 'chat' | 'responses';
@@ -382,6 +384,20 @@ export async function recordSurfaceSuccess(input: {
   let estimatedCost = 0;
   let billingDetails: unknown = null;
 
+  if (config.proxyLowLatencyMode) {
+    runProxySideEffect('tokenRouter.recordSuccess', () => tokenRouter.recordSuccess(
+      input.selected.channel.id,
+      input.latencyMs,
+      0,
+      input.modelName,
+    ));
+    return {
+      resolvedUsage,
+      estimatedCost,
+      billingDetails,
+    };
+  }
+
   try {
     resolvedUsage = await resolveProxyUsageWithSelfLogFallback({
       site: input.selected.site,
@@ -415,12 +431,12 @@ export async function recordSurfaceSuccess(input: {
     console.error(input.bestEffortMetrics.errorLabel, error);
   }
 
-  tokenRouter.recordSuccess(
+  runProxySideEffect('tokenRouter.recordSuccess', () => tokenRouter.recordSuccess(
     input.selected.channel.id,
     input.latencyMs,
     estimatedCost,
     input.modelName,
-  );
+  ));
   input.recordDownstreamCost?.(estimatedCost);
   const logTokens = resolvedUsage.usageSource === 'unknown'
     ? {
@@ -522,11 +538,8 @@ export function createSurfaceFailureToolkit(input: {
     : null;
 
   const runBestEffort = (label: string, fn: () => Promise<unknown>) => {
-    void Promise.resolve()
-      .then(fn)
-      .catch((error) => {
-        console.warn(`[proxy/${input.warningScope}] failed to ${label}`, error);
-      });
+    if (config.proxyLowLatencyMode) return;
+    runProxySideEffect(`proxy/${input.warningScope}/${label}`, fn);
   };
 
   return {
