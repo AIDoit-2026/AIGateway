@@ -191,7 +191,7 @@ export const zhToEnSupplemental: Record<string, string> = {
   '共 ${models.length} 个模型': 'Total ${models.length} models',
   '关闭': 'closure',
   '关于': 'about',
-  '关于 Metapi': 'About metapi',
+  '关于 Metapi': 'About AIGateway',
   '管理端 IP 白名单': 'Management IP whitelist',
   '管理员': 'administrator',
   '管理员登录 Token 已被修改，请使用新 Token 登录。': 'The administrator login token has been modified, please use the new token to log in.',

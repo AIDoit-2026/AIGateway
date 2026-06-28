@@ -1,5 +1,5 @@
-appId: me.cita777.metapi.desktop
-productName: Metapi
+appId: io.github.aidoit2026.aigateway.desktop
+productName: AIGateway
 artifactName: ${name}-${version}-${os}-${arch}.${ext}
 directories:
   output: release
@@ -27,11 +27,11 @@ linux:
     - AppImage
     - deb
     - rpm
-  maintainer: cita-777 <cita-777@users.noreply.github.com>
+  maintainer: AIDoit-2026 <AIDoit-2026@users.noreply.github.com>
 publish:
   provider: github
-  owner: cita-777
-  repo: metapi
+  owner: AIDoit-2026
+  repo: AIGateway
   releaseType: release
   publishAutoUpdate: true
 nsis:
