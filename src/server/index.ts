@@ -72,6 +72,7 @@ import {
   db,
   ensureProxyFileCompatibilityColumns,
   ensureProxyLogClientColumns,
+  ensureProxyLogClientIpColumn,
   ensureProxyLogDownstreamApiKeyIdColumn,
   ensureProxyLogBillingDetailsColumn,
   ensureProxyLogStreamTimingColumns,
@@ -175,6 +176,7 @@ try {
   await ensureProxyFileCompatibilityColumns();
   await ensureProxyLogStreamTimingColumns();
   await ensureProxyLogClientColumns();
+  await ensureProxyLogClientIpColumn();
   await ensureProxyLogDownstreamApiKeyIdColumn();
   const finalRows = await db.select().from(schema.settings).all();
   const finalMap = toSettingsMap(finalRows);

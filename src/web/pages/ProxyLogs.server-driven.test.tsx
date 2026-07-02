@@ -75,6 +75,7 @@ function buildListResponse(overrides?: Partial<{
         clientAppId: 'cherry_studio',
         clientAppName: 'Cherry Studio',
         clientConfidence: 'heuristic',
+        clientIp: '203.0.113.10',
         downstreamKeyName: '移动端灰度',
         downstreamKeyGroupName: '项目A',
         downstreamKeyTags: ['VIP', '灰度'],
@@ -279,6 +280,7 @@ describe('ProxyLogs server-driven page', () => {
       expect(text).toContain('失败 4');
       expect(text).toContain('Cherry Studio');
       expect(text).toContain('Codex');
+      expect(text).toContain('IP 203.0.113.10');
       expect(text).toContain('推测');
       expect(text).toContain('下游 Key: 移动端灰度');
       expect(text).toContain('流式');

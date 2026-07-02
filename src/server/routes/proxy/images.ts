@@ -12,7 +12,7 @@ import { getProxyUrlFromExtraConfig } from '../../services/accountExtraConfig.js
 import { composeProxyLogMessage } from '../../services/proxyLogMessage.js';
 import { formatUtcSqlDateTime } from '../../services/localTimeService.js';
 import { cloneFormDataWithOverrides, ensureMultipartBufferParser, parseMultipartFormData } from './multipart.js';
-import { getProxyAuthContext } from '../../middleware/auth.js';
+import { extractClientIp, getProxyAuthContext } from '../../middleware/auth.js';
 import { buildUpstreamUrl } from './upstreamUrl.js';
 import { detectDownstreamClientContext, type DownstreamClientContext } from '../../proxy-core/downstreamClientContext.js';
 import { insertProxyLog } from '../../services/proxyLogStore.js';
@@ -39,6 +39,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
       clientIp: request.ip,
     });
     const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const downstreamPath = '/v1/images/generations';
     const clientContext = detectDownstreamClientContext({
       downstreamPath,
@@ -130,6 +131,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
             clientContext,
             false,
             firstByteLatencyMs,
+            clientIp,
           );
           if (canRetryChannelSelection(retryCount, forcedChannelId)) {
             retryCount++;
@@ -176,6 +178,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
           clientContext,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         return reply.code(upstream.status).send(data.value);
       } catch (err: any) {
@@ -201,6 +204,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
           clientContext,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         if (status > 0 && isTokenExpiredError({ status, message: errorText })) {
           await reportTokenExpired({
@@ -244,6 +248,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
       clientIp: request.ip,
     });
     const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const downstreamPath = '/v1/images/edits';
     const clientContext = detectDownstreamClientContext({
       downstreamPath,
@@ -350,6 +355,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
             clientContext,
             false,
             firstByteLatencyMs,
+            clientIp,
           );
           if (canRetryChannelSelection(retryCount, forcedChannelId)) {
             retryCount++;
@@ -396,6 +402,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
           clientContext,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         return reply.code(upstream.status).send(data.value);
       } catch (err: any) {
@@ -421,6 +428,7 @@ export async function imagesProxyRoute(app: FastifyInstance) {
           clientContext,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         if (status > 0 && isTokenExpiredError({ status, message: errorText })) {
           await reportTokenExpired({
@@ -472,6 +480,7 @@ async function logProxy(
   clientContext: DownstreamClientContext | null = null,
   isStream = false,
   firstByteLatencyMs: number | null = null,
+  clientIp: string | null = null,
 ) {
   try {
     const createdAt = formatUtcSqlDateTime(new Date());
@@ -504,6 +513,7 @@ async function logProxy(
       clientAppId: clientContext?.clientAppId || null,
       clientAppName: clientContext?.clientAppName || null,
       clientConfidence: clientContext?.clientConfidence || null,
+      clientIp,
       errorMessage: normalizedErrorMessage,
       retryCount,
       createdAt,

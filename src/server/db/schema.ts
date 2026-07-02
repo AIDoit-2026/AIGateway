@@ -261,6 +261,7 @@ export const proxyLogs = sqliteTable('proxy_logs', {
   clientAppId: text('client_app_id'),
   clientAppName: text('client_app_name'),
   clientConfidence: text('client_confidence'),
+  clientIp: text('client_ip'),
   errorMessage: text('error_message'),
   retryCount: integer('retry_count').default(0),
   createdAt: text('created_at').default(sql`(datetime('now'))`),

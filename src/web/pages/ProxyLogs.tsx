@@ -502,7 +502,7 @@ function formatProxyLogClientFamilyLabel(
 function resolveProxyLogClientDisplay(
   log: Pick<
     ProxyLogRenderItem,
-    "clientFamily" | "clientAppName" | "clientConfidence"
+    "clientFamily" | "clientAppName" | "clientConfidence" | "clientIp"
   >,
   options?: { includeGeneric?: boolean },
 ) {
@@ -512,16 +512,20 @@ function resolveProxyLogClientDisplay(
   );
   const appName =
     typeof log.clientAppName === "string" ? log.clientAppName.trim() : "";
+  const clientIp =
+    typeof log.clientIp === "string" ? log.clientIp.trim() : "";
   if (appName) {
     return {
       primary: appName,
       secondary: familyLabel,
+      clientIp,
       heuristic: log.clientConfidence === "heuristic",
     };
   }
   return {
-    primary: familyLabel,
+    primary: familyLabel || (clientIp ? `IP ${clientIp}` : null),
     secondary: null,
+    clientIp: familyLabel ? clientIp : "",
     heuristic: false,
   };
 }
@@ -529,12 +533,12 @@ function resolveProxyLogClientDisplay(
 function renderProxyLogClientCell(
   log: Pick<
     ProxyLogRenderItem,
-    "clientFamily" | "clientAppName" | "clientConfidence"
+    "clientFamily" | "clientAppName" | "clientConfidence" | "clientIp"
   >,
   options?: { includeGeneric?: boolean },
 ) {
   const display = resolveProxyLogClientDisplay(log, options);
-  if (!display.primary) {
+  if (!display.primary && !display.clientIp) {
     return <span style={{ color: "var(--color-text-muted)" }}>-</span>;
   }
 
@@ -548,7 +552,7 @@ function renderProxyLogClientCell(
           flexWrap: "wrap",
         }}
       >
-        <span>{display.primary}</span>
+        <span>{display.primary || `IP ${display.clientIp}`}</span>
         {display.heuristic ? (
           <span
             className="badge"
@@ -565,6 +569,11 @@ function renderProxyLogClientCell(
       {display.secondary ? (
         <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
           {display.secondary}
+        </span>
+      ) : null}
+      {display.clientIp ? (
+        <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+          IP {display.clientIp}
         </span>
       ) : null}
     </div>

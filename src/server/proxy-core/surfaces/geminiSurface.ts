@@ -61,6 +61,7 @@ import {
   canRetryChannelSelection,
   getTesterForcedChannelId,
 } from '../channelSelection.js';
+import { extractClientIp } from '../../middleware/auth.js';
 const GEMINI_MODEL_PROBES = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
@@ -256,6 +257,7 @@ async function logProxy(
   totalTokens = 0,
   isStream = false,
   firstByteLatencyMs: number | null = null,
+  clientIp: string | null = null,
 ) {
   try {
     const createdAt = formatUtcSqlDateTime(new Date());
@@ -288,6 +290,7 @@ async function logProxy(
       clientAppId: clientContext?.clientAppId || null,
       clientAppName: clientContext?.clientAppName || null,
       clientConfidence: clientContext?.clientConfidence || null,
+      clientIp,
       errorMessage: normalizedErrorMessage,
       retryCount,
       createdAt,
@@ -353,6 +356,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
       headers: request.headers as Record<string, unknown>,
       clientIp: request.ip,
     });
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     let retryCount = 0;
     let lastStatus = 503;
     let lastText = 'No available channels for Gemini models';
@@ -531,6 +535,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
       headers: request.headers as Record<string, unknown>,
       clientIp: request.ip,
     });
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const downstreamPath = resolveDownstreamPath(request);
     const clientContext = detectDownstreamClientContext({
       downstreamPath,
@@ -822,6 +827,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
               0,
               isStreamAction,
               firstByteLatencyMs,
+              clientIp,
             );
             if (canRetryChannelSelection(retryCount, forcedChannelId)) {
               retryCount += 1;
@@ -865,6 +871,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
                 0,
                 isStreamAction,
                 firstByteLatencyMs,
+                clientIp,
               );
               await safeInsertSurfaceProxyDebugAttempt(debugTrace, {
                 attemptIndex: retryCount,
@@ -951,6 +958,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
                 parsedUsage.totalTokens,
                 isStreamAction,
                 firstByteLatencyMs,
+                clientIp,
               );
               await safeInsertSurfaceProxyDebugAttempt(debugTrace, {
                 attemptIndex: retryCount,
@@ -1005,6 +1013,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
                 parsedUsage.totalTokens,
                 isStreamAction,
                 firstByteLatencyMs,
+                clientIp,
               );
               await safeInsertSurfaceProxyDebugAttempt(debugTrace, {
                 attemptIndex: retryCount,
@@ -1071,6 +1080,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
               parsedUsage.totalTokens,
               isStreamAction,
               firstByteLatencyMs,
+              clientIp,
             );
             await safeInsertSurfaceProxyDebugAttempt(debugTrace, {
               attemptIndex: retryCount,
@@ -1121,6 +1131,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
               0,
               isStreamAction,
               firstByteLatencyMs,
+              clientIp,
             );
             await safeInsertSurfaceProxyDebugAttempt(debugTrace, {
               attemptIndex: retryCount,
@@ -1369,6 +1380,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
             0,
             isStreamAction,
             null,
+            clientIp,
           );
           if (canRetryChannelSelection(retryCount, forcedChannelId)) {
             retryCount += 1;
@@ -1416,6 +1428,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
           parsedUsage.totalTokens,
           isStreamAction,
           firstByteLatencyMs,
+          clientIp,
         );
         const downstreamPayload = isGeminiCliDownstream
           ? { response: geminiResponse }
@@ -1463,6 +1476,7 @@ export async function geminiProxyRoute(app: FastifyInstance) {
           0,
           isStreamAction,
           null,
+          clientIp,
         );
         if (canRetryChannelSelection(retryCount, forcedChannelId)) {
           retryCount += 1;

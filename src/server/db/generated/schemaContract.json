@@ -1371,6 +1371,12 @@
           "notNull": false,
           "defaultValue": null,
           "primaryKey": false
+        },
+        "client_ip": {
+          "logicalType": "text",
+          "notNull": false,
+          "defaultValue": null,
+          "primaryKey": false
         }
       }
     },

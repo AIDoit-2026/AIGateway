@@ -27,7 +27,7 @@ import { detectProxyFailure } from '../../services/proxyFailureJudge.js';
 import { openAiChatTransformer } from '../../transformers/openai/chat/index.js';
 import { anthropicMessagesTransformer } from '../../transformers/anthropic/messages/index.js';
 import { shouldPreferResponsesForAnthropicContinuation } from '../../transformers/anthropic/messages/compatibility.js';
-import { getProxyAuthContext, getProxyResourceOwner } from '../../middleware/auth.js';
+import { extractClientIp, getProxyAuthContext, getProxyResourceOwner } from '../../middleware/auth.js';
 import {
   ProxyInputFileResolutionError,
   resolveOpenAiBodyInputFiles,
@@ -188,12 +188,14 @@ export async function handleChatSurfaceRequest(
     proxyToken: getProxyAuthContext(request)?.token || null,
   });
   const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+  const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
   const maxRetries = getProxyMaxChannelRetries();
   const failureToolkit = createSurfaceFailureToolkit({
     warningScope: 'chat',
     downstreamPath,
     maxRetries,
     clientContext,
+    clientIp,
     downstreamApiKeyId,
   });
   const stickySessionKey = buildSurfaceStickySessionKey({
@@ -1131,12 +1133,14 @@ export async function handleClaudeCountTokensSurfaceRequest(
     clientIp: request.ip,
   });
   const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+  const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
   const maxRetries = getProxyMaxChannelRetries();
   const failureToolkit = createSurfaceFailureToolkit({
     warningScope: 'chat',
     downstreamPath,
     maxRetries,
     clientContext,
+    clientIp,
     downstreamApiKeyId,
   });
   const stickySessionKey = buildSurfaceStickySessionKey({

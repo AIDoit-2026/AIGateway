@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   hasProxyLogBillingDetailsColumnMock,
   hasProxyLogClientColumnsMock,
+  hasProxyLogClientIpColumnMock,
   hasProxyLogDownstreamApiKeyIdColumnMock,
   hasProxyLogStreamTimingColumnsMock,
   dbInsertMock,
@@ -12,6 +13,7 @@ const {
 } = vi.hoisted(() => ({
   hasProxyLogBillingDetailsColumnMock: vi.fn(),
   hasProxyLogClientColumnsMock: vi.fn(),
+  hasProxyLogClientIpColumnMock: vi.fn(),
   hasProxyLogDownstreamApiKeyIdColumnMock: vi.fn(),
   hasProxyLogStreamTimingColumnsMock: vi.fn(),
   dbInsertMock: vi.fn(),
@@ -38,6 +40,7 @@ const {
     clientAppId: 'client_app_id',
     clientAppName: 'client_app_name',
     clientConfidence: 'client_confidence',
+    clientIp: 'client_ip',
     errorMessage: 'error_message',
     retryCount: 'retry_count',
     createdAt: 'created_at',
@@ -53,6 +56,7 @@ vi.mock('../db/index.js', () => ({
   },
   hasProxyLogBillingDetailsColumn: (...args: unknown[]) => hasProxyLogBillingDetailsColumnMock(...args),
   hasProxyLogClientColumns: (...args: unknown[]) => hasProxyLogClientColumnsMock(...args),
+  hasProxyLogClientIpColumn: (...args: unknown[]) => hasProxyLogClientIpColumnMock(...args),
   hasProxyLogDownstreamApiKeyIdColumn: (...args: unknown[]) => hasProxyLogDownstreamApiKeyIdColumnMock(...args),
   hasProxyLogStreamTimingColumns: (...args: unknown[]) => hasProxyLogStreamTimingColumnsMock(...args),
 }));
@@ -63,6 +67,7 @@ describe('proxyLogStore', () => {
   beforeEach(() => {
     hasProxyLogBillingDetailsColumnMock.mockReset();
     hasProxyLogClientColumnsMock.mockReset();
+    hasProxyLogClientIpColumnMock.mockReset();
     hasProxyLogDownstreamApiKeyIdColumnMock.mockReset();
     hasProxyLogStreamTimingColumnsMock.mockReset();
     dbInsertMock.mockReset();
@@ -70,6 +75,7 @@ describe('proxyLogStore', () => {
     dbInsertRunMock.mockReset();
     hasProxyLogBillingDetailsColumnMock.mockResolvedValue(false);
     hasProxyLogClientColumnsMock.mockResolvedValue(false);
+    hasProxyLogClientIpColumnMock.mockResolvedValue(false);
     hasProxyLogDownstreamApiKeyIdColumnMock.mockResolvedValue(false);
     hasProxyLogStreamTimingColumnsMock.mockResolvedValue(false);
 
@@ -111,6 +117,21 @@ describe('proxyLogStore', () => {
     expect(runner.mock.calls[1][0].includeStreamTimingFields).toBe(false);
     expect(runner.mock.calls[1][0].fields.isStream).toBeUndefined();
     expect(runner.mock.calls[1][0].fields.firstByteLatencyMs).toBeUndefined();
+  });
+
+  it('retries proxy log selects without client ip when that column is missing', async () => {
+    hasProxyLogClientIpColumnMock.mockResolvedValue(true);
+    const runner = vi.fn()
+      .mockRejectedValueOnce(new Error('column proxy_logs.client_ip does not exist'))
+      .mockResolvedValueOnce([{ id: 1 }]);
+
+    await expect(withProxyLogSelectFields(runner)).resolves.toEqual([{ id: 1 }]);
+
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner.mock.calls[0][0].includeClientIpField).toBe(true);
+    expect(runner.mock.calls[0][0].fields.clientIp).toBe('client_ip');
+    expect(runner.mock.calls[1][0].includeClientIpField).toBe(false);
+    expect(runner.mock.calls[1][0].fields.clientIp).toBeUndefined();
   });
 
   it('accepts parsed billing details objects for helper-level callers', () => {
@@ -178,6 +199,7 @@ describe('proxyLogStore', () => {
 
   it('writes structured client fields when the schema supports them', async () => {
     hasProxyLogClientColumnsMock.mockResolvedValue(true);
+    hasProxyLogClientIpColumnMock.mockResolvedValue(true);
 
     await insertProxyLog({
       modelRequested: 'gpt-5',
@@ -185,6 +207,7 @@ describe('proxyLogStore', () => {
       clientAppId: 'cherry_studio',
       clientAppName: 'Cherry Studio',
       clientConfidence: 'exact',
+      clientIp: '203.0.113.10',
     });
 
     expect(dbInsertValuesMock).toHaveBeenCalledTimes(1);
@@ -194,6 +217,22 @@ describe('proxyLogStore', () => {
       clientAppId: 'cherry_studio',
       clientAppName: 'Cherry Studio',
       clientConfidence: 'exact',
+      clientIp: '203.0.113.10',
+    });
+  });
+
+  it('writes client ip independently of structured client fields', async () => {
+    hasProxyLogClientIpColumnMock.mockResolvedValue(true);
+
+    await insertProxyLog({
+      modelRequested: 'gpt-5',
+      clientIp: '203.0.113.10',
+    });
+
+    expect(dbInsertValuesMock).toHaveBeenCalledTimes(1);
+    expect(dbInsertValuesMock.mock.calls[0][0]).toMatchObject({
+      modelRequested: 'gpt-5',
+      clientIp: '203.0.113.10',
     });
   });
 
@@ -243,6 +282,28 @@ describe('proxyLogStore', () => {
     expect(dbInsertValuesMock.mock.calls[1][0].clientAppId).toBeUndefined();
     expect(dbInsertValuesMock.mock.calls[1][0].clientAppName).toBeUndefined();
     expect(dbInsertValuesMock.mock.calls[1][0].clientConfidence).toBeUndefined();
+  });
+
+  it('retries proxy log inserts without client ip when that column is missing', async () => {
+    hasProxyLogClientIpColumnMock.mockResolvedValue(true);
+    dbInsertRunMock
+      .mockRejectedValueOnce(new Error('column proxy_logs.client_ip does not exist'))
+      .mockResolvedValueOnce(undefined);
+
+    await insertProxyLog({
+      modelRequested: 'gpt-5',
+      clientIp: '203.0.113.10',
+    });
+
+    expect(dbInsertValuesMock).toHaveBeenCalledTimes(2);
+    expect(dbInsertValuesMock.mock.calls[0][0]).toMatchObject({
+      modelRequested: 'gpt-5',
+      clientIp: '203.0.113.10',
+    });
+    expect(dbInsertValuesMock.mock.calls[1][0]).toMatchObject({
+      modelRequested: 'gpt-5',
+    });
+    expect(dbInsertValuesMock.mock.calls[1][0].clientIp).toBeUndefined();
   });
 
   it('retries proxy log inserts without stream timing fields when those columns are missing', async () => {

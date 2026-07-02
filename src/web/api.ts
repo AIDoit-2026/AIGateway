@@ -478,6 +478,7 @@ export type ProxyLogListItem = {
   clientAppId?: string | null;
   clientAppName?: string | null;
   clientConfidence?: ProxyLogClientConfidence;
+  clientIp?: string | null;
   usageSource?: ProxyLogUsageSource;
   promptTokens?: number | null;
   completionTokens?: number | null;

@@ -13,7 +13,7 @@ import { getProxyUrlFromExtraConfig } from '../../services/accountExtraConfig.js
 import { composeProxyLogMessage } from '../../services/proxyLogMessage.js';
 import { formatUtcSqlDateTime } from '../../services/localTimeService.js';
 import { resolveProxyLogBilling } from './proxyBilling.js';
-import { getProxyAuthContext } from '../../middleware/auth.js';
+import { extractClientIp, getProxyAuthContext } from '../../middleware/auth.js';
 import { buildUpstreamUrl } from './upstreamUrl.js';
 import { detectDownstreamClientContext, type DownstreamClientContext } from '../../proxy-core/downstreamClientContext.js';
 import { insertProxyLog } from '../../services/proxyLogStore.js';
@@ -41,6 +41,7 @@ export async function embeddingsProxyRoute(app: FastifyInstance) {
       clientIp: request.ip,
     });
     const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const downstreamPath = '/v1/embeddings';
     const clientContext = detectDownstreamClientContext({
       downstreamPath,
@@ -155,7 +156,7 @@ export async function embeddingsProxyRoute(app: FastifyInstance) {
         logProxy(
           selected, requestedModel, 'success', upstream.status, latency, null, retryCount, downstreamApiKeyId,
           resolvedUsage.promptTokens, resolvedUsage.completionTokens, resolvedUsage.totalTokens, estimatedCost, billingDetails, clientContext, downstreamPath,
-          resolvedUsage.usageSource, false, firstByteLatencyMs,
+          resolvedUsage.usageSource, false, firstByteLatencyMs, clientIp,
         );
         return reply.code(upstream.status).send(data);
       } catch (err: any) {
@@ -186,6 +187,7 @@ export async function embeddingsProxyRoute(app: FastifyInstance) {
           null,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         if (status > 0 && isTokenExpiredError({ status, message: errorText })) {
           await reportTokenExpired({
@@ -233,6 +235,7 @@ async function logProxy(
   usageSource: 'upstream' | 'self-log' | 'unknown' | null = null,
   isStream = false,
   firstByteLatencyMs: number | null = null,
+  clientIp: string | null = null,
 ) {
   try {
     const createdAt = formatUtcSqlDateTime(new Date());
@@ -267,6 +270,7 @@ async function logProxy(
       clientAppId: clientContext?.clientAppId || null,
       clientAppName: clientContext?.clientAppName || null,
       clientConfidence: clientContext?.clientConfidence || null,
+      clientIp,
       errorMessage: normalizedErrorMessage,
       retryCount,
       createdAt,

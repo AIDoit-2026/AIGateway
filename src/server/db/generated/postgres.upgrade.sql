@@ -1,1 +1,1 @@
--- no schema changes detected for postgres
+ALTER TABLE "proxy_logs" ADD COLUMN "client_ip" TEXT;

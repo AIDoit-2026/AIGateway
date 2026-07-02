@@ -53,6 +53,7 @@ let pgPool: pg.Pool | null = null;
 let proxyLogBillingDetailsColumnAvailable: boolean | null = null;
 let proxyLogDownstreamApiKeyIdColumnAvailable: boolean | null = null;
 let proxyLogClientColumnsAvailable: boolean | null = null;
+let proxyLogClientIpColumnAvailable: boolean | null = null;
 let proxyLogStreamTimingColumnsAvailable: boolean | null = null;
 
 function buildMysqlPoolOptions(
@@ -666,6 +667,18 @@ function ensureProxyLogClientSchema() {
   proxyLogClientColumnsAvailable = true;
 }
 
+function ensureProxyLogClientIpSchema() {
+  if (!tableExists('proxy_logs')) {
+    return;
+  }
+
+  if (!tableColumnExists('proxy_logs', 'client_ip')) {
+    execSqliteLegacyCompat('ALTER TABLE proxy_logs ADD COLUMN client_ip text;');
+  }
+
+  proxyLogClientIpColumnAvailable = true;
+}
+
 function ensureProxyLogStreamTimingSchema() {
   if (!tableExists('proxy_logs')) {
     return;
@@ -1006,6 +1019,72 @@ export async function ensureProxyLogClientColumns(): Promise<boolean> {
   }
 }
 
+export async function hasProxyLogClientIpColumn(): Promise<boolean> {
+  if (proxyLogClientIpColumnAvailable !== null) {
+    return proxyLogClientIpColumnAvailable;
+  }
+
+  if (runtimeDbDialect === 'sqlite') {
+    proxyLogClientIpColumnAvailable = tableExists('proxy_logs')
+      && tableColumnExists('proxy_logs', 'client_ip');
+    return proxyLogClientIpColumnAvailable;
+  }
+
+  if (runtimeDbDialect === 'mysql') {
+    if (!mysqlPool) return false;
+    const [rows] = await mysqlPool.query('SHOW COLUMNS FROM `proxy_logs` LIKE ?', ['client_ip']);
+    proxyLogClientIpColumnAvailable = Array.isArray(rows) && rows.length > 0;
+    return proxyLogClientIpColumnAvailable;
+  }
+
+  if (!pgPool) return false;
+  const result = await pgPool.query(
+    'SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2 LIMIT 1',
+    ['proxy_logs', 'client_ip'],
+  );
+  proxyLogClientIpColumnAvailable = Number(result.rowCount || 0) > 0;
+  return proxyLogClientIpColumnAvailable;
+}
+
+export async function ensureProxyLogClientIpColumn(): Promise<boolean> {
+  if (runtimeDbDialect === 'sqlite') {
+    ensureProxyLogClientIpSchema();
+    proxyLogClientIpColumnAvailable = tableExists('proxy_logs')
+      && tableColumnExists('proxy_logs', 'client_ip');
+    return proxyLogClientIpColumnAvailable;
+  }
+
+  if (await hasProxyLogClientIpColumn()) {
+    return true;
+  }
+
+  try {
+    if (runtimeDbDialect === 'mysql') {
+      if (!mysqlPool) return false;
+      await executeLegacyCompat(
+        (statement) => mysqlPool!.query(statement).then(() => undefined),
+        'ALTER TABLE `proxy_logs` ADD COLUMN `client_ip` TEXT NULL',
+      );
+    } else {
+      if (!pgPool) return false;
+      await executeLegacyCompat(
+        (statement) => pgPool!.query(statement).then(() => undefined),
+        'ALTER TABLE "proxy_logs" ADD COLUMN "client_ip" TEXT',
+      );
+    }
+    proxyLogClientIpColumnAvailable = true;
+    return true;
+  } catch (error) {
+    if (isDuplicateColumnError(error)) {
+      proxyLogClientIpColumnAvailable = true;
+      return true;
+    }
+    proxyLogClientIpColumnAvailable = false;
+    console.warn('[db] failed to ensure proxy_logs.client_ip column', error);
+    return false;
+  }
+}
+
 export async function hasProxyLogStreamTimingColumns(): Promise<boolean> {
   if (proxyLogStreamTimingColumnsAvailable !== null) {
     return proxyLogStreamTimingColumnsAvailable;
@@ -1105,6 +1184,7 @@ function resetSchemaCapabilityCache() {
   proxyLogBillingDetailsColumnAvailable = null;
   proxyLogDownstreamApiKeyIdColumnAvailable = null;
   proxyLogClientColumnsAvailable = null;
+  proxyLogClientIpColumnAvailable = null;
   proxyLogStreamTimingColumnsAvailable = null;
 }
 
@@ -1367,6 +1447,7 @@ function initSqliteDb() {
   ensureDownstreamApiKeySchema();
   ensureProxyLogBillingDetailsSchema();
   ensureProxyLogClientSchema();
+  ensureProxyLogClientIpSchema();
   ensureProxyVideoTaskSchema();
   ensureProxyFileSchema();
 

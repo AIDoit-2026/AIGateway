@@ -10,7 +10,7 @@ import { withSiteRecordProxyRequestInit } from '../../services/siteProxy.js';
 import { getProxyUrlFromExtraConfig } from '../../services/accountExtraConfig.js';
 import { composeProxyLogMessage } from '../../services/proxyLogMessage.js';
 import { formatUtcSqlDateTime } from '../../services/localTimeService.js';
-import { getProxyAuthContext } from '../../middleware/auth.js';
+import { extractClientIp, getProxyAuthContext } from '../../middleware/auth.js';
 import { buildUpstreamUrl } from './upstreamUrl.js';
 import { detectDownstreamClientContext, type DownstreamClientContext } from '../../proxy-core/downstreamClientContext.js';
 import { insertProxyLog } from '../../services/proxyLogStore.js';
@@ -67,6 +67,7 @@ export async function searchProxyRoute(app: FastifyInstance) {
       clientIp: request.ip,
     });
     const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const downstreamPath = '/v1/search';
     const clientContext = detectDownstreamClientContext({
       downstreamPath,
@@ -162,6 +163,7 @@ export async function searchProxyRoute(app: FastifyInstance) {
           downstreamPath,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         return reply.code(upstream.status).send(data);
       } catch (error: any) {
@@ -186,6 +188,7 @@ export async function searchProxyRoute(app: FastifyInstance) {
           downstreamPath,
           false,
           firstByteLatencyMs,
+          clientIp,
         );
         if (status > 0 && isTokenExpiredError({ status, message: errorText })) {
           await reportTokenExpired({
@@ -227,6 +230,7 @@ async function logProxy(
   downstreamPath = '/v1/search',
   isStream = false,
   firstByteLatencyMs: number | null = null,
+  clientIp: string | null = null,
 ) {
   try {
     const createdAt = formatUtcSqlDateTime(new Date());
@@ -259,6 +263,7 @@ async function logProxy(
       clientAppId: clientContext?.clientAppId || null,
       clientAppName: clientContext?.clientAppName || null,
       clientConfidence: clientContext?.clientConfidence || null,
+      clientIp,
       retryCount,
       createdAt,
     });

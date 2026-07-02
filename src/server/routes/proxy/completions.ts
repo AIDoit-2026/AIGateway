@@ -14,7 +14,7 @@ import { composeProxyLogMessage } from '../../services/proxyLogMessage.js';
 import { formatUtcSqlDateTime } from '../../services/localTimeService.js';
 import { detectProxyFailure } from '../../services/proxyFailureJudge.js';
 import { resolveProxyLogBilling } from './proxyBilling.js';
-import { getProxyAuthContext } from '../../middleware/auth.js';
+import { extractClientIp, getProxyAuthContext } from '../../middleware/auth.js';
 import { buildUpstreamUrl } from './upstreamUrl.js';
 import { detectDownstreamClientContext, type DownstreamClientContext } from '../../proxy-core/downstreamClientContext.js';
 import { insertProxyLog } from '../../services/proxyLogStore.js';
@@ -42,6 +42,7 @@ export async function completionsProxyRoute(app: FastifyInstance) {
       clientIp: request.ip,
     });
     const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const downstreamPath = '/v1/completions';
     const clientContext = detectDownstreamClientContext({
       downstreamPath,
@@ -211,6 +212,7 @@ export async function completionsProxyRoute(app: FastifyInstance) {
             resolvedUsage.usageSource,
             isStream,
             firstByteLatencyMs,
+            clientIp,
           );
           return;
         }
@@ -251,6 +253,7 @@ export async function completionsProxyRoute(app: FastifyInstance) {
             null,
             isStream,
             firstByteLatencyMs,
+            clientIp,
           );
 
           if (shouldRetryProxyRequest(failure.status, errText) && canRetryChannelSelection(retryCount, forcedChannelId)) {
@@ -314,6 +317,7 @@ export async function completionsProxyRoute(app: FastifyInstance) {
           resolvedUsage.usageSource,
           isStream,
           firstByteLatencyMs,
+          clientIp,
         );
         return reply.send(data);
       } catch (err: any) {
@@ -344,6 +348,7 @@ export async function completionsProxyRoute(app: FastifyInstance) {
           null,
           isStream,
           firstByteLatencyMs,
+          clientIp,
         );
         if (status > 0 && isTokenExpiredError({ status, message: errorText })) {
           await reportTokenExpired({
@@ -388,6 +393,7 @@ async function logProxy(
   usageSource: 'upstream' | 'self-log' | 'unknown' | null = null,
   isStream: boolean,
   firstByteLatencyMs: number | null,
+  clientIp: string | null = null,
 ) {
   try {
     const createdAt = formatUtcSqlDateTime(new Date());
@@ -422,6 +428,7 @@ async function logProxy(
       clientAppId: clientContext?.clientAppId || null,
       clientAppName: clientContext?.clientAppName || null,
       clientConfidence: clientContext?.clientConfidence || null,
+      clientIp,
       errorMessage: normalizedErrorMessage,
       retryCount,
       createdAt,

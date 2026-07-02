@@ -374,6 +374,7 @@ describe('selectSurfaceChannelForAttempt', () => {
         sessionId: 'sess-1',
         traceHint: 'trace-1',
       },
+      clientIp: '203.0.113.10',
       downstreamApiKeyId: 44,
     });
 
@@ -407,6 +408,7 @@ describe('selectSurfaceChannelForAttempt', () => {
       clientAppId: 'app-id',
       clientAppName: 'App',
       clientConfidence: 'high',
+      clientIp: '203.0.113.10',
       errorMessage: 'normalized error',
       retryCount: 1,
       createdAt: '2026-03-21 22:00:00',

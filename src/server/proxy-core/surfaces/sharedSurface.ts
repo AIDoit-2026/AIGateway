@@ -207,6 +207,7 @@ export async function writeSurfaceProxyLog(input: {
   upstreamPath?: string | null;
   usageSource?: 'upstream' | 'self-log' | 'unknown' | null;
   clientContext?: DownstreamClientContext | null;
+  clientIp?: string | null;
   downstreamApiKeyId?: number | null;
 }): Promise<void> {
   try {
@@ -243,6 +244,7 @@ export async function writeSurfaceProxyLog(input: {
       clientAppId: input.clientContext?.clientAppId || null,
       clientAppName: input.clientContext?.clientAppName || null,
       clientConfidence: input.clientContext?.clientConfidence || null,
+      clientIp: input.clientIp || null,
       errorMessage: normalizedErrorMessage,
       retryCount: input.retryCount,
       createdAt,
@@ -494,6 +496,7 @@ export function createSurfaceFailureToolkit(input: {
   downstreamPath: string;
   maxRetries: number;
   clientContext?: DownstreamClientContext | null;
+  clientIp?: string | null;
   downstreamApiKeyId?: number | null;
 }) {
   const log = async (args: {
@@ -534,6 +537,7 @@ export function createSurfaceFailureToolkit(input: {
       billingDetails: args.billingDetails,
       upstreamPath: args.upstreamPath,
       clientContext: input.clientContext,
+      clientIp: input.clientIp,
       downstreamApiKeyId: input.downstreamApiKeyId,
     });
   };

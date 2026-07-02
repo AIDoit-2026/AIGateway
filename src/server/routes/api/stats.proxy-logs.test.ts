@@ -111,6 +111,7 @@ describe("stats proxy logs routes", () => {
           isStream: 0,
           firstByteLatencyMs: 12,
           clientFamily: "codex",
+          clientIp: "203.0.113.10",
           promptTokens: 8,
           completionTokens: 2,
           totalTokens: 10,
@@ -183,6 +184,7 @@ describe("stats proxy logs routes", () => {
     expect(body.items[0]?.downstreamKeyGroupName).toBe("项目A");
     expect(body.items[0]?.downstreamKeyTags).toEqual(["VIP", "灰度"]);
     expect(body.items[0]?.clientFamily).toBe("codex");
+    expect(body.items[0]?.clientIp).toBe("203.0.113.10");
     expect(body.items[0]?.clientAppId).toBe(null);
     expect(body.items[0]?.clientAppName).toBe(null);
     expect(body.items[0]?.clientConfidence).toBe(null);
@@ -249,6 +251,7 @@ describe("stats proxy logs routes", () => {
         clientAppId: "cherry_studio",
         clientAppName: "Cherry Studio",
         clientConfidence: "exact",
+        clientIp: "203.0.113.10",
         promptTokens: 100,
         completionTokens: 20,
         totalTokens: 120,
@@ -280,6 +283,7 @@ describe("stats proxy logs routes", () => {
       clientAppId: string | null;
       clientAppName: string | null;
       clientConfidence: string | null;
+      clientIp: string | null;
       isStream: boolean | null;
       firstByteLatencyMs: number | null;
       billingDetails: Record<string, unknown> | null;
@@ -295,6 +299,7 @@ describe("stats proxy logs routes", () => {
     expect(body.clientAppId).toBe("cherry_studio");
     expect(body.clientAppName).toBe("Cherry Studio");
     expect(body.clientConfidence).toBe("exact");
+    expect(body.clientIp).toBe("203.0.113.10");
     expect(body.isStream).toBe(true);
     expect(body.firstByteLatencyMs).toBe(64);
     expect(body.billingDetails).toMatchObject({

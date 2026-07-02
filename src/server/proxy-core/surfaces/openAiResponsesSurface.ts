@@ -24,7 +24,7 @@ import {
 import { ensureModelAllowedForDownstreamKey, getDownstreamRoutingPolicy, recordDownstreamCostUsage } from '../../routes/proxy/downstreamPolicy.js';
 import { executeEndpointFlow, type BuiltEndpointRequest } from '../orchestration/endpointFlow.js';
 import { detectProxyFailure } from '../../services/proxyFailureJudge.js';
-import { getProxyAuthContext, getProxyResourceOwner } from '../../middleware/auth.js';
+import { extractClientIp, getProxyAuthContext, getProxyResourceOwner } from '../../middleware/auth.js';
 import { normalizeInputFileBlock } from '../../transformers/shared/inputFile.js';
 import { promoteRequiredEndpointCandidateAfterProtocolError } from '../../transformers/shared/endpointCompatibility.js';
 import {
@@ -308,12 +308,14 @@ export async function handleOpenAiResponsesSurfaceRequest(
       clientIp: request.ip,
     });
     const downstreamApiKeyId = getProxyAuthContext(request)?.keyId ?? null;
+    const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
     const maxRetries = getProxyMaxChannelRetries();
     const failureToolkit = createSurfaceFailureToolkit({
       warningScope: 'responses',
       downstreamPath,
       maxRetries,
       clientContext,
+      clientIp,
       downstreamApiKeyId,
     });
     const stickySessionKey = buildSurfaceStickySessionKey({
