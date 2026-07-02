@@ -11,7 +11,6 @@ import {
 import {
   getCredentialModeFromExtraConfig,
   getProxyUrlFromExtraConfig,
-  guessPlatformUserIdFromUsername,
   hasOauthProvider,
   getSub2ApiAuthFromExtraConfig,
   mergeAccountExtraConfig,
@@ -19,7 +18,6 @@ import {
   resolvePlatformUserId,
   type AccountCredentialMode,
 } from "../../services/accountExtraConfig.js";
-import { encryptAccountPassword } from "../../services/accountCredentialService.js";
 import { applyAccountUpdateWorkflow } from "../../services/accountUpdateWorkflow.js";
 import { startBackgroundTask } from "../../services/backgroundTaskService.js";
 import { parseCheckinRewardAmount } from "../../services/checkinRewardParser.js";
@@ -43,9 +41,7 @@ import {
   parseAccountBatchPayload,
   parseAccountCreatePayload,
   parseAccountHealthRefreshPayload,
-  parseAccountLoginPayload,
   parseAccountManualModelsPayload,
-  parseAccountRebindSessionPayload,
   parseAccountUpdatePayload,
   parseAccountVerifyTokenPayload,
 } from "../../contracts/accountsRoutePayloads.js";
@@ -229,44 +225,9 @@ async function getNextAccountSortOrder(): Promise<number> {
   return max + 1;
 }
 
-type LoginFailureInfo = {
-  message: string;
-  shieldBlocked: boolean;
-};
-
 const ACCOUNT_HEALTH_REFRESH_TIMEOUT_MS = 10_000;
 const ACCOUNT_VERIFY_TIMEOUT_MS = 10_000;
 const ACCOUNT_VERIFY_DIAG_TIMEOUT_MS = 2_500;
-
-function normalizeLoginFailure(
-  message: string | null | undefined,
-): LoginFailureInfo {
-  const raw = (message || "").trim();
-  const lowered = raw.toLowerCase();
-  const looksLikeHtmlJsonParseError =
-    lowered.includes("unexpected token") &&
-    lowered.includes("not valid json") &&
-    (lowered.includes("<html") || lowered.includes("<script"));
-  const looksLikeShieldChallenge =
-    lowered.includes("acw_sc__v2") ||
-    lowered.includes("var arg1") ||
-    lowered.includes("captcha") ||
-    lowered.includes("challenge") ||
-    lowered.includes("cloudflare tunnel error");
-
-  if (looksLikeHtmlJsonParseError || looksLikeShieldChallenge) {
-    return {
-      shieldBlocked: true,
-      message:
-        "This site is shielded by anti-bot challenge. Account/password login is blocked. Create an API key on the target site and import that key.",
-    };
-  }
-
-  return {
-    shieldBlocked: false,
-    message: raw || "login failed",
-  };
-}
 
 function summarizeAccountHealthRefresh(results: AccountHealthRefreshResult[]) {
   return {
@@ -507,164 +468,6 @@ export async function accountsRoutes(app: FastifyInstance) {
         success: false,
         message: "账号密码登录已下线，请在连接管理中添加上游 API Key。",
       });
-
-      const parsedBody = parseAccountLoginPayload(request.body);
-      if (!parsedBody.success) {
-        return reply
-          .code(400)
-          .send({ success: false, message: parsedBody.error });
-      }
-
-      const { siteId, username, password } = parsedBody.data;
-
-      // Get site info
-      const site = await db
-        .select()
-        .from(schema.sites)
-        .where(eq(schema.sites.id, siteId))
-        .get();
-      if (!site) return { success: false, message: "site not found" };
-
-      // Get platform adapter
-      const adapter = getAdapter(site.platform);
-      if (!adapter)
-        return { success: false, message: `不支持的平台: ${site.platform}` };
-
-      // Login to the target site
-      const loginResult = await adapter.login(site.url, username, password);
-      if (!loginResult.success || !loginResult.accessToken) {
-        const normalizedFailure = normalizeLoginFailure(loginResult.message);
-        return {
-          success: false,
-          shieldBlocked: normalizedFailure.shieldBlocked,
-          message: normalizedFailure.message,
-        };
-      }
-
-      const guessedPlatformUserId = guessPlatformUserIdFromUsername(username);
-
-      // Auto-fetch API token(s)
-      let apiToken: string | null = null;
-      let apiTokens: Array<{
-        name?: string | null;
-        key?: string | null;
-        enabled?: boolean | null;
-      }> = [];
-      try {
-        apiToken = await adapter.getApiToken(
-          site.url,
-          loginResult.accessToken,
-          guessedPlatformUserId,
-        );
-      } catch {}
-      try {
-        apiTokens = await adapter.getApiTokens(
-          site.url,
-          loginResult.accessToken,
-          guessedPlatformUserId,
-        );
-      } catch {}
-
-      const preferredApiToken =
-        apiTokens.find((token) => token.enabled !== false && token.key)?.key ||
-        apiToken ||
-        null;
-      const existing = await db
-        .select()
-        .from(schema.accounts)
-        .where(
-          and(
-            eq(schema.accounts.siteId, siteId),
-            eq(schema.accounts.username, username),
-          ),
-        )
-        .get();
-
-      const extraConfigPatch: Record<string, unknown> = {
-        credentialMode: "session",
-        autoRelogin: {
-          username,
-          passwordCipher: encryptAccountPassword(password),
-          updatedAt: new Date().toISOString(),
-        },
-      };
-      if (guessedPlatformUserId) {
-        extraConfigPatch.platformUserId = guessedPlatformUserId;
-      }
-      const extraConfig = mergeAccountExtraConfig(
-        existing?.extraConfig,
-        extraConfigPatch,
-      );
-
-      // Create or update account
-      let accountId = existing?.id;
-      if (existing) {
-        await db
-          .update(schema.accounts)
-          .set({
-            accessToken: loginResult.accessToken,
-            apiToken: preferredApiToken || undefined,
-            checkinEnabled: true,
-            status: "active",
-            extraConfig,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(schema.accounts.id, existing.id))
-          .run();
-      } else {
-        const created = await insertAndGetById<
-          typeof schema.accounts.$inferSelect
-        >({
-          table: schema.accounts,
-          idColumn: schema.accounts.id,
-          values: {
-            siteId,
-            username,
-            accessToken: loginResult.accessToken,
-            apiToken: preferredApiToken || undefined,
-            checkinEnabled: true,
-            extraConfig,
-            isPinned: false,
-            sortOrder: await getNextAccountSortOrder(),
-          },
-          insertErrorMessage: "account create failed",
-          loadErrorMessage: "account create failed",
-        });
-        accountId = created.id;
-      }
-
-      const result = await db
-        .select()
-        .from(schema.accounts)
-        .where(eq(schema.accounts.id, accountId!))
-        .get();
-      if (!result) {
-        return { success: false, message: "account create failed" };
-      }
-
-      await convergeAccountMutation({
-        accountId: result.id,
-        preferredApiToken,
-        defaultTokenSource: "sync",
-        upstreamTokens: apiTokens,
-        refreshBalance: true,
-        refreshModels: true,
-        rebuildRoutes: true,
-        continueOnError: true,
-      });
-
-      const account = await db
-        .select()
-        .from(schema.accounts)
-        .where(eq(schema.accounts.id, result.id))
-        .get();
-      return {
-        success: true,
-        account,
-        apiTokenFound: !!preferredApiToken,
-        tokenCount: apiTokens.length,
-        reusedAccount: !!existing,
-      };
     },
   );
 
@@ -1096,181 +899,6 @@ export async function accountsRoutes(app: FastifyInstance) {
         success: false,
         message: "Session 重绑已下线，请更新或重新添加 API Key 连接。",
       });
-
-      const parsedBody = parseAccountRebindSessionPayload(request.body);
-      if (!parsedBody.success) {
-        return reply
-          .code(400)
-          .send({ success: false, message: parsedBody.error });
-      }
-
-      const accountId = Number.parseInt(request.params.id, 10);
-      if (!Number.isFinite(accountId) || accountId <= 0) {
-        return reply
-          .code(400)
-          .send({ success: false, message: "账号 ID 无效" });
-      }
-
-      const nextAccessToken = (parsedBody.data.accessToken || "").trim();
-      if (!nextAccessToken) {
-        return reply
-          .code(400)
-          .send({ success: false, message: "请提供新的 Session Token" });
-      }
-
-      const row = await db
-        .select()
-        .from(schema.accounts)
-        .innerJoin(schema.sites, eq(schema.accounts.siteId, schema.sites.id))
-        .where(eq(schema.accounts.id, accountId))
-        .get();
-      if (!row) {
-        return reply.code(404).send({ success: false, message: "账号不存在" });
-      }
-
-      const account = row.accounts;
-      const site = row.sites;
-      const adapter = getAdapter(site.platform);
-      if (!adapter) {
-        return reply
-          .code(400)
-          .send({
-            success: false,
-            message: `platform not supported: ${site.platform}`,
-          });
-      }
-
-      const bodyPlatformUserId = Number.parseInt(
-        String(parsedBody.data.platformUserId ?? ""),
-        10,
-      );
-      const candidatePlatformUserId =
-        Number.isFinite(bodyPlatformUserId) && bodyPlatformUserId > 0
-          ? bodyPlatformUserId
-          : resolvePlatformUserId(account.extraConfig, account.username);
-
-      let verifyResult: any;
-      try {
-        verifyResult = await withAccountProxyOverride(
-          getProxyUrlFromExtraConfig(account.extraConfig),
-          () =>
-            adapter.verifyToken(
-              site.url,
-              nextAccessToken,
-              candidatePlatformUserId,
-            ),
-        );
-      } catch (err: any) {
-        return reply.code(400).send({
-          success: false,
-          message: appendSessionTokenRebindHint(
-            err?.message || "Token 验证失败",
-          ),
-        });
-      }
-
-      if (verifyResult?.tokenType !== "session") {
-        return reply.code(400).send({
-          success: false,
-          message: "新的 Token 验证失败：请提供可用的 Session Token",
-        });
-      }
-
-      const nextUsernameRaw =
-        typeof verifyResult?.userInfo?.username === "string"
-          ? verifyResult.userInfo.username.trim()
-          : "";
-      const nextUsername = nextUsernameRaw || account.username || "";
-      const inferredPlatformUserId = resolvePlatformUserId(
-        account.extraConfig,
-        nextUsername,
-      );
-      const resolvedPlatformUserId =
-        Number.isFinite(bodyPlatformUserId) && bodyPlatformUserId > 0
-          ? bodyPlatformUserId
-          : inferredPlatformUserId;
-      const nextApiToken =
-        typeof verifyResult?.apiToken === "string" &&
-        verifyResult.apiToken.trim().length > 0
-          ? verifyResult.apiToken.trim()
-          : account.apiToken || "";
-
-      const updates: Record<string, unknown> = {
-        accessToken: nextAccessToken,
-        status: "active",
-        updatedAt: new Date().toISOString(),
-      };
-      if (nextUsername) {
-        updates.username = nextUsername;
-      }
-      if (nextApiToken) {
-        updates.apiToken = nextApiToken;
-      }
-      const extraConfigPatch: Record<string, unknown> = {
-        credentialMode: "session",
-      };
-      if (resolvedPlatformUserId) {
-        extraConfigPatch.platformUserId = resolvedPlatformUserId;
-      }
-      if ((site.platform || "").toLowerCase() === "sub2api") {
-        const existingManagedAuth = getSub2ApiAuthFromExtraConfig(
-          account.extraConfig,
-        );
-        const requestedRefreshToken = normalizeManagedRefreshToken(
-          parsedBody.data.refreshToken,
-        );
-        const requestedTokenExpiresAt = normalizeManagedTokenExpiresAt(
-          parsedBody.data.tokenExpiresAt,
-        );
-        const nextRefreshToken =
-          requestedRefreshToken || existingManagedAuth?.refreshToken;
-        const nextTokenExpiresAt =
-          requestedTokenExpiresAt ?? existingManagedAuth?.tokenExpiresAt;
-        if (nextRefreshToken) {
-          extraConfigPatch.sub2apiAuth = nextTokenExpiresAt
-            ? {
-                refreshToken: nextRefreshToken,
-                tokenExpiresAt: nextTokenExpiresAt,
-              }
-            : { refreshToken: nextRefreshToken };
-        }
-      }
-      updates.extraConfig = mergeAccountExtraConfig(
-        account.extraConfig,
-        extraConfigPatch,
-      );
-
-      await db
-        .update(schema.accounts)
-        .set(updates)
-        .where(eq(schema.accounts.id, accountId))
-        .run();
-
-      await convergeAccountMutation({
-        accountId,
-        preferredApiToken: nextApiToken,
-        defaultTokenSource: "sync",
-        refreshBalance: true,
-        refreshModels: true,
-        rebuildRoutes: true,
-        continueOnError: true,
-      });
-
-      const latest = await db
-        .select()
-        .from(schema.accounts)
-        .where(eq(schema.accounts.id, accountId))
-        .get();
-      return {
-        success: true,
-        account: latest,
-        tokenType: "session",
-        credentialMode: "session",
-        capabilities: latest
-          ? buildCapabilitiesForAccount(latest)
-          : buildCapabilitiesFromCredentialMode("session", true, null),
-        apiTokenFound: !!nextApiToken,
-      };
     },
   );
 
