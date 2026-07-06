@@ -3,22 +3,25 @@ set -euo pipefail
 
 # Usage:
 #   ./scripts/docker-build.sh
-#   IMAGE_NAME=myrepo/metapi ./scripts/docker-build.sh
+#   IMAGE_NAME=aigateway ./scripts/docker-build.sh
 #   PLATFORM=linux/amd64 ./scripts/docker-build.sh --no-cache
-#   TAG_LATEST=0 VERSION=2.0.1 ./scripts/docker-build.sh
+#   TAG_LATEST=0 VERSION=2.0.2 ./scripts/docker-build.sh
 #
 # Environment variables:
-#   IMAGE_NAME   Docker image name. Default: 1467078763/metapi
+#   IMAGE_NAME   Docker image name. Default: aigateway
 #   VERSION      Image version tag. Default: package.json version
 #   TAG_LATEST   Set to 0 to skip tagging :latest. Default: 1
 #   PLATFORM     Optional docker build platform, such as linux/amd64
 #   Extra script arguments are passed through to docker build.
 
+# LAST RUN 
+# IMAGE_NAME=aigateway TAG_LATEST=0 VERSION=2.0.2 ./scripts/docker-build.sh
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$ROOT_DIR"
 
-IMAGE_NAME="${IMAGE_NAME:-1467078763/metapi}"
+IMAGE_NAME="${IMAGE_NAME:-aigateway}"
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
 TAG_LATEST="${TAG_LATEST:-1}"
 
