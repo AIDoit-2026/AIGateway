@@ -693,15 +693,6 @@ export default function DownstreamKeys() {
     [managedItems, selectedId],
   );
 
-  const copyPublicUsageUrl = async (id: number) => {
-    try {
-      await copyToClipboard(buildPublicDownstreamKeyUsageUrl(id));
-      toast.success('已复制公开用量地址');
-    } catch {
-      toast.error('复制公开地址失败');
-    }
-  };
-
   const openPublicUsageUrl = (id: number) => {
     if (typeof window === 'undefined' || typeof window.open !== 'function') {
       toast.info('当前环境无法打开新标签页，请复制公开地址');
@@ -1163,8 +1154,7 @@ export default function DownstreamKeys() {
                   footerActions={(
                     <>
                       <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
-                      <button className="btn btn-link" onClick={() => void copyPublicUsageUrl(row.id)}>公开用量</button>
-                      <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>打开统计面板</button>
+                      <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>统计面板</button>
                       <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
                       <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
                       <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
@@ -1261,7 +1251,6 @@ export default function DownstreamKeys() {
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="accounts-row-actions" style={{ justifyContent: 'flex-end' }}>
                           <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
-                          <button className="btn btn-link" onClick={() => void copyPublicUsageUrl(row.id)}>公开用量</button>
                           <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>打开统计面板</button>
                           <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
                           <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
