@@ -227,6 +227,61 @@ describe('DownstreamKeys page', () => {
     }
   });
 
+  it('copies the public usage URL from row actions', async () => {
+    const originalClipboard = navigator.clipboard;
+    const originalWindow = (globalThis as any).window;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const open = vi.fn();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    (globalThis as any).window = {
+      location: { origin: 'https://example.test' },
+      open,
+    };
+
+    let root!: WebTestRenderer;
+    try {
+      await act(async () => {
+        root = create(
+          <MemoryRouter initialEntries={['/downstream-keys']}>
+            <ToastProvider>
+              <DownstreamKeys />
+            </ToastProvider>
+          </MemoryRouter>,
+        );
+      });
+      await flushMicrotasks();
+
+      const publicUsageButton = root!.root.findAll((node) => node.type === 'button' && collectText(node) === '公开用量')[0];
+      await act(async () => {
+        await publicUsageButton.props.onClick();
+      });
+
+      expect(writeText).toHaveBeenCalledWith('https://example.test/public/downstream-keys/1/usage');
+      expect(collectText(root!.root)).toContain('已复制公开用量地址');
+
+      const openPublicPageButton = root!.root.findAll((node) => node.type === 'button' && collectText(node) === '打开公开页')[0];
+      await act(async () => {
+        openPublicPageButton.props.onClick();
+      });
+
+      expect(open).toHaveBeenCalledWith('https://example.test/public/downstream-keys/1/usage', '_blank', 'noopener,noreferrer');
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      });
+      if (originalWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = originalWindow;
+      }
+      root?.unmount();
+    }
+  });
+
   it('filters rows locally by search and status', async () => {
     apiMock.getDownstreamApiKeysSummary.mockResolvedValue({
       success: true,
@@ -853,15 +908,12 @@ describe('DownstreamKeys page', () => {
       await flushMicrotasks();
 
       const siteLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('站点B'))[0];
-      const tokenLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('token-a'))[0];
       const defaultApiKeyLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('默认 API Key'))[0];
       const siteCheckbox = siteLabel.findByType('input');
-      const tokenCheckbox = tokenLabel.findByType('input');
       const defaultApiKeyCheckbox = defaultApiKeyLabel.findByType('input');
 
       await act(async () => {
         siteCheckbox.props.onChange({ target: { checked: true } });
-        tokenCheckbox.props.onChange({ target: { checked: true } });
         defaultApiKeyCheckbox.props.onChange({ target: { checked: true } });
       });
       await flushMicrotasks();
@@ -877,7 +929,6 @@ describe('DownstreamKeys page', () => {
         key: 'sk-excluded-key-0405',
         excludedSiteIds: [202],
         excludedCredentialRefs: [
-          { kind: 'account_token', siteId: 201, accountId: 101, tokenId: 301 },
           { kind: 'default_api_key', siteId: 201, accountId: 101 },
         ],
       }));

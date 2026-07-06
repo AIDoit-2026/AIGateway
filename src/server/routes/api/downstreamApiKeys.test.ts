@@ -770,6 +770,37 @@ describe('downstream api keys routes', () => {
       },
     });
 
+    const publicOverviewRes = await app.inject({
+      method: 'GET',
+      url: `/api/public/downstream-keys/${inserted.id}/overview`,
+    });
+
+    expect(publicOverviewRes.statusCode).toBe(200);
+    const publicOverviewBody = publicOverviewRes.json();
+    expect(publicOverviewBody).toMatchObject({
+      success: true,
+      item: {
+        id: inserted.id,
+        name: 'analytics-key',
+        keyMasked: expect.any(String),
+        description: 'analytics',
+      },
+      usage: {
+        last24h: {
+          totalRequests: 2,
+          successRequests: 1,
+          failedRequests: 1,
+          totalTokens: 1500,
+          totalCost: 0.15,
+        },
+      },
+    });
+    expect(publicOverviewBody.item).not.toHaveProperty('key');
+    expect(publicOverviewBody.item).not.toHaveProperty('allowedRouteIds');
+    expect(publicOverviewBody.item).not.toHaveProperty('siteWeightMultipliers');
+    expect(publicOverviewBody.item).not.toHaveProperty('excludedSiteIds');
+    expect(publicOverviewBody.item).not.toHaveProperty('excludedCredentialRefs');
+
     const trendRes = await app.inject({
       method: 'GET',
       url: `/api/downstream-keys/${inserted.id}/trend?range=all`,
@@ -785,6 +816,18 @@ describe('downstream api keys routes', () => {
     expect(trendBody.buckets.some((bucket: any) => bucket.totalTokens === 1500)).toBe(true);
     expect(trendBody.buckets.some((bucket: any) => bucket.totalTokens === 600)).toBe(true);
     expect(trendBody.buckets.some((bucket: any) => bucket.totalTokens === 900)).toBe(true);
+
+    const publicTrendRes = await app.inject({
+      method: 'GET',
+      url: `/api/public/downstream-keys/${inserted.id}/trend?range=all`,
+    });
+
+    expect(publicTrendRes.statusCode).toBe(200);
+    const publicTrendBody = publicTrendRes.json();
+    expect(publicTrendBody.success).toBe(true);
+    expect(publicTrendBody.range).toBe('all');
+    expect(publicTrendBody.item).toEqual({ id: inserted.id, name: 'analytics-key' });
+    expect(publicTrendBody.buckets.some((bucket: any) => bucket.totalTokens === 1500)).toBe(true);
   });
 
   it('groups all-range trend buckets by local day boundaries', async () => {

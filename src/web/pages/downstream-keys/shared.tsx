@@ -45,9 +45,27 @@ export type AggregateUsage = {
   totalCost: number;
 };
 
+export type DownstreamKeyUsageItem = Pick<
+  SummaryItem,
+  | 'id'
+  | 'name'
+  | 'keyMasked'
+  | 'enabled'
+  | 'description'
+  | 'groupName'
+  | 'tags'
+  | 'expiresAt'
+  | 'usedCost'
+  | 'usedRequests'
+  | 'lastUsedAt'
+  | 'createdAt'
+> & {
+  rangeUsage?: AggregateUsage | null;
+};
+
 export type OverviewResponse = {
   success: boolean;
-  item: SummaryItem;
+  item: DownstreamKeyUsageItem;
   usage: null | {
     last24h: AggregateUsage | null;
     last7d: AggregateUsage | null;

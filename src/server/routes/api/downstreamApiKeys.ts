@@ -4,6 +4,7 @@ import { db, hasProxyLogDownstreamApiKeyIdColumn, runtimeDbDialect, schema } fro
 import { insertAndGetById } from '../../db/insertHelpers.js';
 import {
   getDownstreamApiKeyById,
+  type DownstreamApiKeyPolicyView,
   invalidateDownstreamTokenAuthCache,
   listDownstreamApiKeys,
   normalizeDownstreamApiKeyPayload,
@@ -89,6 +90,31 @@ function normalizeBatchIds(raw: unknown): number[] {
 type DownstreamKeyRange = DownstreamKeyTrendRange;
 type DownstreamKeyStatus = 'all' | 'enabled' | 'disabled';
 
+type DownstreamKeyAggregateUsage = {
+  totalRequests: number;
+  successRequests: number;
+  failedRequests: number;
+  successRate: number | null;
+  totalTokens: number;
+  totalCost: number;
+};
+
+type PublicDownstreamApiKeyView = Pick<
+  DownstreamApiKeyPolicyView,
+  | 'id'
+  | 'name'
+  | 'keyMasked'
+  | 'enabled'
+  | 'description'
+  | 'groupName'
+  | 'tags'
+  | 'expiresAt'
+  | 'usedCost'
+  | 'usedRequests'
+  | 'lastUsedAt'
+  | 'createdAt'
+>;
+
 function normalizeDownstreamKeyRange(raw: unknown): DownstreamKeyRange {
   const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
   if (value === '24h') return '24h';
@@ -133,6 +159,74 @@ function normalizeTagMatchMode(raw: unknown): 'any' | 'all' {
 
 function resolveRangeSinceUtc(range: DownstreamKeyRange): string | null {
   return resolveDownstreamTrendRangeSinceUtc(range);
+}
+
+function toPublicDownstreamKeyView(item: DownstreamApiKeyPolicyView): PublicDownstreamApiKeyView {
+  return {
+    id: item.id,
+    name: item.name,
+    keyMasked: item.keyMasked,
+    enabled: item.enabled,
+    description: item.description,
+    groupName: item.groupName,
+    tags: item.tags,
+    expiresAt: item.expiresAt,
+    usedCost: item.usedCost,
+    usedRequests: item.usedRequests,
+    lastUsedAt: item.lastUsedAt,
+    createdAt: item.createdAt,
+  };
+}
+
+async function readDownstreamKeyAggregateUsage(
+  downstreamApiKeyId: number,
+  range: DownstreamKeyRange,
+): Promise<DownstreamKeyAggregateUsage> {
+  const sinceUtc = resolveRangeSinceUtc(range);
+  const row = await db.select({
+    totalRequests: sql<number>`count(*)`,
+    successRequests: sql<number>`coalesce(sum(case when ${schema.proxyLogs.status} = 'success' then 1 else 0 end), 0)`,
+    failedRequests: sql<number>`coalesce(sum(case when ${schema.proxyLogs.status} = 'success' then 0 else 1 end), 0)`,
+    totalTokens: sql<number>`coalesce(sum(coalesce(${schema.proxyLogs.totalTokens}, 0)), 0)`,
+    totalCost: sql<number>`coalesce(sum(coalesce(${schema.proxyLogs.estimatedCost}, 0)), 0)`,
+  })
+    .from(schema.proxyLogs)
+    .where(and(
+      eq(schema.proxyLogs.downstreamApiKeyId, downstreamApiKeyId),
+      ...(sinceUtc ? [sql`${schema.proxyLogs.createdAt} >= ${sinceUtc}`] : []),
+    ))
+    .get();
+
+  const totalRequests = Number((row as any)?.totalRequests || 0);
+  const successRequests = Number((row as any)?.successRequests || 0);
+  const totalCost = Number((row as any)?.totalCost || 0);
+  return {
+    totalRequests,
+    successRequests,
+    failedRequests: Number((row as any)?.failedRequests || 0),
+    successRate: totalRequests > 0 ? Math.round((successRequests / totalRequests) * 1000) / 10 : null,
+    totalTokens: Number((row as any)?.totalTokens || 0),
+    totalCost: Math.round(totalCost * 1_000_000) / 1_000_000,
+  };
+}
+
+async function readDownstreamKeyOverviewUsage(downstreamApiKeyId: number): Promise<{
+  last24h: DownstreamKeyAggregateUsage | null;
+  last7d: DownstreamKeyAggregateUsage | null;
+  all: DownstreamKeyAggregateUsage | null;
+}> {
+  const columnReady = await hasProxyLogDownstreamApiKeyIdColumn();
+  if (!columnReady) {
+    return { last24h: null, last7d: null, all: null };
+  }
+
+  const [last24h, last7d, all] = await Promise.all([
+    readDownstreamKeyAggregateUsage(downstreamApiKeyId, '24h'),
+    readDownstreamKeyAggregateUsage(downstreamApiKeyId, '7d'),
+    readDownstreamKeyAggregateUsage(downstreamApiKeyId, 'all'),
+  ]);
+
+  return { last24h, last7d, all };
 }
 
 async function validatePolicyReferences(input: {
@@ -241,6 +335,64 @@ async function validatePolicyReferences(input: {
 }
 
 export async function downstreamApiKeysRoutes(app: FastifyInstance) {
+  app.get<{ Params: { id: string } }>('/api/public/downstream-keys/:id/overview', async (request, reply) => {
+    const id = parseRouteId(request.params.id);
+    if (!id) {
+      return reply.code(400).send({ success: false, message: 'id 无效' });
+    }
+
+    const item = await getDownstreamApiKeyById(id);
+    if (!item) {
+      return reply.code(404).send({ success: false, message: 'API key 不存在' });
+    }
+
+    return {
+      success: true,
+      item: toPublicDownstreamKeyView(item),
+      usage: await readDownstreamKeyOverviewUsage(id),
+    };
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { range?: string; timeZone?: string } }>('/api/public/downstream-keys/:id/trend', async (request, reply) => {
+    const id = parseRouteId(request.params.id);
+    if (!id) {
+      return reply.code(400).send({ success: false, message: 'id 无效' });
+    }
+
+    const range = normalizeDownstreamKeyRange(request.query?.range);
+    const item = await getDownstreamApiKeyById(id);
+    if (!item) {
+      return reply.code(404).send({ success: false, message: 'API key 不存在' });
+    }
+
+    const columnReady = await hasProxyLogDownstreamApiKeyIdColumn();
+    if (!columnReady) {
+      return {
+        success: true,
+        range,
+        item: { id: item.id, name: item.name },
+        bucketSeconds: resolveDownstreamTrendBucketSeconds(range),
+        timeZone: resolveDownstreamTrendTimeZone(request.query?.timeZone),
+        buckets: [],
+      };
+    }
+
+    const trend = await readDownstreamApiKeyTrendBuckets({
+      downstreamApiKeyId: id,
+      range,
+      timeZone: request.query?.timeZone,
+    });
+
+    return {
+      success: true,
+      range,
+      item: { id: item.id, name: item.name },
+      bucketSeconds: trend.bucketSeconds,
+      timeZone: trend.timeZone,
+      buckets: trend.buckets,
+    };
+  });
+
   app.get<{ Querystring: { range?: string; status?: string; search?: string; group?: string; tags?: string | string[]; tagMatch?: string } }>('/api/downstream-keys/summary', async (request) => {
     const range = normalizeDownstreamKeyRange(request.query?.range);
     const status = normalizeDownstreamKeyStatus(request.query?.status);
@@ -382,47 +534,7 @@ export async function downstreamApiKeysRoutes(app: FastifyInstance) {
       return reply.code(404).send({ success: false, message: 'API key 不存在' });
     }
 
-    const columnReady = await hasProxyLogDownstreamApiKeyIdColumn();
-    if (!columnReady) {
-      return { success: true, item, usage: { last24h: null, last7d: null, all: null } };
-    }
-
-    const readAggregate = async (range: DownstreamKeyRange) => {
-      const sinceUtc = resolveRangeSinceUtc(range);
-      const row = await db.select({
-        totalRequests: sql<number>`count(*)`,
-        successRequests: sql<number>`coalesce(sum(case when ${schema.proxyLogs.status} = 'success' then 1 else 0 end), 0)`,
-        failedRequests: sql<number>`coalesce(sum(case when ${schema.proxyLogs.status} = 'success' then 0 else 1 end), 0)`,
-        totalTokens: sql<number>`coalesce(sum(coalesce(${schema.proxyLogs.totalTokens}, 0)), 0)`,
-        totalCost: sql<number>`coalesce(sum(coalesce(${schema.proxyLogs.estimatedCost}, 0)), 0)`,
-      })
-        .from(schema.proxyLogs)
-        .where(and(
-          eq(schema.proxyLogs.downstreamApiKeyId, id),
-          ...(sinceUtc ? [sql`${schema.proxyLogs.createdAt} >= ${sinceUtc}`] : []),
-        ))
-        .get();
-
-      const totalRequests = Number((row as any)?.totalRequests || 0);
-      const successRequests = Number((row as any)?.successRequests || 0);
-      const totalCost = Number((row as any)?.totalCost || 0);
-      return {
-        totalRequests,
-        successRequests,
-        failedRequests: Number((row as any)?.failedRequests || 0),
-        successRate: totalRequests > 0 ? Math.round((successRequests / totalRequests) * 1000) / 10 : null,
-        totalTokens: Number((row as any)?.totalTokens || 0),
-        totalCost: Math.round(totalCost * 1_000_000) / 1_000_000,
-      };
-    };
-
-    const [last24h, last7d, all] = await Promise.all([
-      readAggregate('24h'),
-      readAggregate('7d'),
-      readAggregate('all'),
-    ]);
-
-    return { success: true, item, usage: { last24h, last7d, all } };
+    return { success: true, item, usage: await readDownstreamKeyOverviewUsage(id) };
   });
 
   app.get<{ Params: { id: string }; Querystring: { range?: string; timeZone?: string } }>('/api/downstream-keys/:id/trend', async (request, reply) => {

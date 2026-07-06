@@ -34,4 +34,15 @@ describe('App sidebar config', () => {
     expect(source).toContain('<Route path="/checkin" element={<Navigate to="/accounts?segment=apikey" replace />} />');
     expect(source).toContain('<Route path="/tokens" element={<Navigate to="/accounts?segment=apikey" replace />} />');
   });
+
+  it('renders public downstream key usage routes before the login gate', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/web/App.tsx'), 'utf8');
+    const publicRouteIndex = source.indexOf("path=\"/public/downstream-keys/:id/usage\"");
+    const loginGateIndex = source.indexOf('if (!authed) {');
+
+    expect(source).toContain("const PublicDownstreamKeyUsage = lazy(() => import('./pages/PublicDownstreamKeyUsage.js'));");
+    expect(source).toContain("location.pathname.startsWith('/public/downstream-keys/')");
+    expect(publicRouteIndex).toBeGreaterThanOrEqual(0);
+    expect(loginGateIndex).toBeGreaterThan(publicRouteIndex);
+  });
 });

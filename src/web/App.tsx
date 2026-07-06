@@ -34,6 +34,7 @@ const About = lazy(() => import('./pages/About.js'));
 const ModelTester = lazy(() => import('./pages/ModelTester.js'));
 const Monitors = lazy(() => import('./pages/Monitors.js'));
 const SiteAnnouncements = lazy(() => import('./pages/SiteAnnouncements.js'));
+const PublicDownstreamKeyUsage = lazy(() => import('./pages/PublicDownstreamKeyUsage.js'));
 
 type ThemeMode = 'system' | 'light' | 'dark';
 
@@ -468,6 +469,8 @@ function AppShell() {
   const latestTaskEventIdRef = useRef(0);
   const toast = useToast();
   const isMobile = useIsMobile();
+  const location = useLocation();
+  const isPublicDownstreamKeyUsageRoute = location.pathname.startsWith('/public/downstream-keys/');
   const resolvedTheme: 'light' | 'dark' = themeMode === 'system'
     ? (systemPrefersDark ? 'dark' : 'light')
     : themeMode;
@@ -629,6 +632,17 @@ function AppShell() {
     setShowProfileModal(false);
     toast.success(t('个人信息已保存'));
   };
+
+  if (isPublicDownstreamKeyUsageRoute) {
+    return (
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <Routes>
+          <Route path="/public/downstream-keys/:id/usage" element={<PublicDownstreamKeyUsage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
 
   if (!authed) {
     return <Login t={t} onLogin={(token) => {

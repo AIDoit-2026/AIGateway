@@ -167,6 +167,64 @@ async function request<T = any>(
   return res.json() as Promise<T>;
 }
 
+async function publicRequest<T = any>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const {
+    timeoutMs = 30_000,
+    signal: externalSignal,
+    ...fetchOptions
+  } = options;
+  const controller = new AbortController();
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  let cleanupExternalSignal = () => {};
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      const abortHandler = () => controller.abort();
+      externalSignal.addEventListener("abort", abortHandler, { once: true });
+      cleanupExternalSignal = () =>
+        externalSignal.removeEventListener("abort", abortHandler);
+    }
+  }
+
+  const headers = new Headers(fetchOptions.headers ?? {});
+  if (fetchOptions.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  try {
+    const res = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(await extractResponseErrorMessage(res));
+    }
+    return res.json() as Promise<T>;
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      if (externalSignal?.aborted) throw error;
+      throw new Error(
+        `请求超时（${Math.max(1, Math.round(timeoutMs / 1000))}s）`,
+      );
+    }
+    throw error;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+    cleanupExternalSignal();
+  }
+}
+
 async function streamSse(
   url: string,
   handlers: {
@@ -1046,6 +1104,15 @@ export const api = {
   ) =>
     request<DownstreamApiKeyTrendResponse>(
       `/api/downstream-keys/${id}/trend${buildQueryString(params)}`,
+    ),
+  getPublicDownstreamApiKeyOverview: (id: number) =>
+    publicRequest(`/api/public/downstream-keys/${id}/overview`),
+  getPublicDownstreamApiKeyTrend: (
+    id: number,
+    params?: { range?: "24h" | "7d" | "all"; timeZone?: string },
+  ) =>
+    publicRequest<DownstreamApiKeyTrendResponse>(
+      `/api/public/downstream-keys/${id}/trend${buildQueryString(params)}`,
     ),
   exportBackup: (type: "all" | "accounts" | "preferences" = "all") =>
     request(`/api/settings/backup/export?type=${encodeURIComponent(type)}`),
