@@ -262,7 +262,7 @@ describe('DownstreamKeys page', () => {
       expect(writeText).toHaveBeenCalledWith('https://example.test/public/downstream-keys/1/usage');
       expect(collectText(root!.root)).toContain('已复制公开用量地址');
 
-      const openPublicPageButton = root!.root.findAll((node) => node.type === 'button' && collectText(node) === '打开公开页')[0];
+      const openPublicPageButton = root!.root.findAll((node) => node.type === 'button' && collectText(node) === '打开统计面板')[0];
       await act(async () => {
         openPublicPageButton.props.onClick();
       });

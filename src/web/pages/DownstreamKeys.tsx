@@ -1164,7 +1164,7 @@ export default function DownstreamKeys() {
                     <>
                       <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
                       <button className="btn btn-link" onClick={() => void copyPublicUsageUrl(row.id)}>公开用量</button>
-                      <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>打开公开页</button>
+                      <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>打开统计面板</button>
                       <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
                       <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
                       <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
@@ -1262,7 +1262,7 @@ export default function DownstreamKeys() {
                         <div className="accounts-row-actions" style={{ justifyContent: 'flex-end' }}>
                           <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
                           <button className="btn btn-link" onClick={() => void copyPublicUsageUrl(row.id)}>公开用量</button>
-                          <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>打开公开页</button>
+                          <button className="btn btn-link" onClick={() => openPublicUsageUrl(row.id)}>打开统计面板</button>
                           <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
                           <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
                           <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
