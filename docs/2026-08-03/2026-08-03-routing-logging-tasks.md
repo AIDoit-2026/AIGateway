@@ -7,6 +7,7 @@ status: proposed
 
 
 - [x] 稳定路由通道状态可观测性：TokenRoutes 通道行显示优先级、连续失败次数和活动冷却剩余时间；新增冷却时间格式化测试。
+- [x] 历史备份导入策略归一化：备份中的 `weighted`/`round_robin` 路由策略导入后统一保存为 `stable_first`，并更新回归断言。
 # 任务清单
 
 ## A. 现状基线与复现
