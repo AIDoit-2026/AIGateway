@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { requireInsertedRowId } from '../db/insertHelpers.js';
 import { upsertSetting } from '../db/upsertSetting.js';
 import { mergeAccountExtraConfig } from './accountExtraConfig.js';
+import { normalizeRouteRoutingStrategy } from './routeRoutingStrategy.js';
 import { getOauthInfoFromAccount } from './oauth/oauthAccount.js';
 import { PLATFORM_ALIASES, detectPlatformByUrlHint } from '../../shared/platformIdentity.js';
 
@@ -1635,7 +1636,7 @@ async function importAccountsSection(section: AccountsBackupSection): Promise<vo
         routeMode: row.routeMode ?? 'pattern',
         decisionSnapshot: row.decisionSnapshot ?? null,
         decisionRefreshedAt: row.decisionRefreshedAt ?? null,
-        routingStrategy: row.routingStrategy ?? 'weighted',
+        routingStrategy: normalizeRouteRoutingStrategy(row.routingStrategy),
         enabled: row.enabled,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,

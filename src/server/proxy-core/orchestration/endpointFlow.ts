@@ -2,6 +2,7 @@ import { fetch } from 'undici';
 import { readRuntimeResponseText } from '../executors/types.js';
 import { fetchWithObservedFirstByte, isObservedFirstByteTimeoutResponse } from '../firstByteTimeout.js';
 import { withSiteProxyRequestInit } from '../../services/siteProxy.js';
+import { logFailedUpstreamRequest } from '../../services/upstreamRequestLog.js';
 import {
   buildUpstreamUrl,
   summarizeUpstreamError,
@@ -155,6 +156,15 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
     }
 
     let rawErrText = await readRuntimeResponseText(response).catch(() => 'unknown error');
+    logFailedUpstreamRequest({
+      scope: 'proxy/endpoint-flow',
+      url: targetUrl,
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      status: response.status,
+      error: new Error(rawErrText || `upstream returned HTTP ${response.status}`),
+    });
     const baseContext: EndpointAttemptContext = {
       endpointIndex,
       endpointCount,

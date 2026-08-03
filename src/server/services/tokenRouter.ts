@@ -96,8 +96,6 @@ const SHORT_WINDOW_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
 // Keep weighted-route backoff within the JavaScript Date range when fail counts grow large.
 const MAX_FAILURE_BACKOFF_SEC = 30 * 24 * 60 * 60;
 const MIN_EFFECTIVE_UNIT_COST = 1e-6;
-const ROUND_ROBIN_FAILURE_THRESHOLD = 3;
-const ROUND_ROBIN_COOLDOWN_LEVELS_SEC = [0, 10 * 60, 60 * 60, 24 * 60 * 60] as const;
 const STABLE_FIRST_SITE_SCORE_RATIO = 0.92;
 const SITE_RUNTIME_HEALTH_DECAY_HALF_LIFE_MS = 10 * 60 * 1000;
 const SITE_RUNTIME_MIN_MULTIPLIER = 0.08;
@@ -343,9 +341,13 @@ function resolveEffectiveFailureCooldownMs(failCount?: number | null): number {
   return clampFailureCooldownMs(resolveFailureBackoffSec(failCount) * 1000);
 }
 
-function resolveRoundRobinCooldownSec(level: number): number {
-  const normalizedLevel = Math.max(0, Math.min(ROUND_ROBIN_COOLDOWN_LEVELS_SEC.length - 1, Math.trunc(level)));
-  return ROUND_ROBIN_COOLDOWN_LEVELS_SEC[normalizedLevel] ?? 0;
+function resolveConfiguredFailureThreshold(): number {
+  return Math.max(1, Math.trunc(config.tokenRouterFailureThreshold || 3));
+}
+
+function resolveConfiguredFailureCooldownMs(): number {
+  const minutes = Math.max(1, Math.trunc(config.tokenRouterFailureCooldownMinutes || 10));
+  return clampFailureCooldownMs(minutes * 60 * 1000);
 }
 
 function resolveSiteRuntimeBreakerMs(level: number): number {
@@ -2736,30 +2738,17 @@ export class TokenRouter {
       if (memberRow) {
         const shortWindowLimitCooldownUntil = resolveShortWindowLimitCooldown(memberRow.account, normalizedContext, nowMs);
         const failCount = shortWindowLimitCooldownUntil ? 0 : ((memberRow.member.failCount ?? 0) + 1);
-        const routeUnitStrategy = memberRow.unit.strategy === 'stick_until_unavailable'
-          ? 'stick_until_unavailable'
-          : 'round_robin';
         let cooldownUntil: string | null = null;
         let consecutiveFailCount = Math.max(0, memberRow.member.consecutiveFailCount ?? 0) + 1;
-        let cooldownLevel = Math.max(0, memberRow.member.cooldownLevel ?? 0);
+        let cooldownLevel = 0;
 
         if (shortWindowLimitCooldownUntil) {
           cooldownUntil = shortWindowLimitCooldownUntil;
           consecutiveFailCount = 0;
           cooldownLevel = 0;
-        } else if (routeUnitStrategy === 'round_robin') {
-          if (consecutiveFailCount >= ROUND_ROBIN_FAILURE_THRESHOLD) {
-            cooldownLevel = Math.min(cooldownLevel + 1, ROUND_ROBIN_COOLDOWN_LEVELS_SEC.length - 1);
-            const cooldownSec = resolveRoundRobinCooldownSec(cooldownLevel);
-            cooldownUntil = cooldownSec > 0
-              ? new Date(nowMs + clampFailureCooldownMs(cooldownSec * 1000)).toISOString()
-              : null;
-            consecutiveFailCount = 0;
-          }
-        } else {
-          cooldownUntil = new Date(nowMs + resolveEffectiveFailureCooldownMs(failCount)).toISOString();
+        } else if (consecutiveFailCount >= resolveConfiguredFailureThreshold()) {
+          cooldownUntil = new Date(nowMs + resolveConfiguredFailureCooldownMs()).toISOString();
           consecutiveFailCount = 0;
-          cooldownLevel = 0;
         }
 
         await db.update(schema.oauthRouteUnitMembers).set({
@@ -2778,31 +2767,20 @@ export class TokenRouter {
 
     const shortWindowLimitCooldownUntil = resolveShortWindowLimitCooldown(account, normalizedContext, nowMs);
     const failCount = shortWindowLimitCooldownUntil ? 0 : ((ch.failCount ?? 0) + 1);
-    const routeStrategy = resolveRouteStrategy(route);
     const affectedChannelIds = shortWindowLimitCooldownUntil
       ? await loadCredentialScopedChannelIds(ch, account.id)
       : [channelId];
     let cooldownUntil: string | null = null;
     let consecutiveFailCount = Math.max(0, ch.consecutiveFailCount ?? 0) + 1;
-    let cooldownLevel = Math.max(0, ch.cooldownLevel ?? 0);
+    let cooldownLevel = 0;
 
     if (shortWindowLimitCooldownUntil) {
       cooldownUntil = shortWindowLimitCooldownUntil;
       consecutiveFailCount = 0;
       cooldownLevel = 0;
-    } else if (routeStrategy === 'round_robin') {
-      if (consecutiveFailCount >= ROUND_ROBIN_FAILURE_THRESHOLD) {
-        cooldownLevel = Math.min(cooldownLevel + 1, ROUND_ROBIN_COOLDOWN_LEVELS_SEC.length - 1);
-        const cooldownSec = resolveRoundRobinCooldownSec(cooldownLevel);
-        cooldownUntil = cooldownSec > 0
-          ? new Date(nowMs + clampFailureCooldownMs(cooldownSec * 1000)).toISOString()
-          : null;
-        consecutiveFailCount = 0;
-      }
-    } else {
-      cooldownUntil = new Date(nowMs + resolveEffectiveFailureCooldownMs(failCount)).toISOString();
+    } else if (consecutiveFailCount >= resolveConfiguredFailureThreshold()) {
+      cooldownUntil = new Date(nowMs + resolveConfiguredFailureCooldownMs()).toISOString();
       consecutiveFailCount = 0;
-      cooldownLevel = 0;
     }
 
     await db.update(schema.routeChannels).set({
@@ -2891,32 +2869,10 @@ export class TokenRouter {
     if (routeStrategy === 'stable_first') {
       const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
       const candidates = filterRecentlyFailedCandidates(breakerFiltered.candidates, nowMs);
-      const rotationKey = this.buildStableFirstRotationKey(match.route.id, requestedModel);
-      const poolPlan = buildStableFirstPoolPlan(
-        candidates,
-        requestedByDisplayName ? runtimeModelResolver : mappedModel,
-        nowMs,
-      );
-      const shouldUseObservation = (
-        poolPlan.observationCandidates.length > 0
-        && (
-          poolPlan.primaryCandidates.length <= 0
-          || (
-            recordSelection
-            && shouldUseStableFirstObservationCandidate(rotationKey, poolPlan.observationCandidates, nowMs)
-          )
-        )
-      );
-      const selectionPool = shouldUseObservation
-        ? poolPlan.observationCandidates
-        : (poolPlan.primaryCandidates.length > 0 ? poolPlan.primaryCandidates : poolPlan.observationCandidates);
-      const selected = this.stableFirstSelect(
-        selectionPool,
-        requestedByDisplayName ? runtimeModelResolver : mappedModel,
-        downstreamPolicy,
-        nowMs,
-        shouldUseObservation ? `${rotationKey}:observe` : rotationKey,
-      );
+      const selected = [...candidates].sort((left, right) => (
+        (left.channel.priority ?? 0) - (right.channel.priority ?? 0)
+        || left.channel.id - right.channel.id
+      ))[0] ?? null;
       if (!selected) return null;
       return await this.finalizeSelectedCandidateForDispatch(
         selected,
@@ -2927,9 +2883,9 @@ export class TokenRouter {
         recordSelection,
         nowIso,
         nowMs,
-        rotationKey,
-        `${rotationKey}:observe`,
-        shouldUseObservation,
+        undefined,
+        undefined,
+        false,
         excludeChannelIds,
       );
     }

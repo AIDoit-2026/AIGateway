@@ -54,6 +54,7 @@ import {
   parseBatchApiKeys,
 } from "../../services/apiKeyBatch.js";
 import { createManualAccount } from "../../services/manualAccountCreationService.js";
+import { logFailedUpstreamRequest } from "../../services/upstreamRequestLog.js";
 
 type AccountWithSiteRow = {
   accounts: typeof schema.accounts.$inferSelect;
@@ -476,8 +477,10 @@ export async function accountsRoutes(app: FastifyInstance) {
     "/api/accounts/verify-token",
     { preHandler: [limitAccountVerifyToken] },
     async (request, reply) => {
+      const verificationRequestId = request.id;
       const parsedBody = parseAccountVerifyTokenPayload(request.body);
       if (!parsedBody.success) {
+        console.warn('[accounts/verify-token] rejected invalid payload', { requestId: verificationRequestId, reason: parsedBody.error });
         return reply
           .code(400)
           .send({ success: false, message: parsedBody.error });
@@ -496,10 +499,13 @@ export async function accountsRoutes(app: FastifyInstance) {
       if (!site) return { success: false, message: "site not found" };
 
       if (!accessToken) {
+        console.warn('[accounts/verify-token] rejected empty credential', { requestId: verificationRequestId, siteId });
         return { success: false, message: "Token 不能为空" };
       }
 
       const adapter = getAdapter(site.platform);
+      if (!adapter)
+        console.warn('[accounts/verify-token] rejected unsupported platform', { requestId: verificationRequestId, siteId, platform: site.platform });
       if (!adapter)
         return { success: false, message: `不支持的平台: ${site.platform}` };
 
@@ -686,6 +692,15 @@ export async function accountsRoutes(app: FastifyInstance) {
               )
             : [];
           if (availableModels.length === 0) {
+            logFailedUpstreamRequest({
+              scope: 'accounts/verify-token/models',
+              requestId: verificationRequestId,
+              url: site.url,
+              method: 'GET',
+              headers: { Authorization: `Bearer ${accessToken}` },
+              body: '',
+              error: new Error('upstream returned no models'),
+            });
             return {
               success: false,
               message: "API Key 验证失败：未获取到可用模型",
@@ -698,6 +713,14 @@ export async function accountsRoutes(app: FastifyInstance) {
             models: availableModels.slice(0, 10),
           };
         } catch (err: any) {
+          logFailedUpstreamRequest({
+            scope: 'accounts/verify-token/models',
+            requestId: verificationRequestId,
+            url: site.url,
+            method: 'GET',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            error: err,
+          });
           if (isVerificationTimeoutError(err)) {
             const failure = buildVerificationFailureResponse(
               await diagnoseVerificationFailure({
@@ -722,6 +745,14 @@ export async function accountsRoutes(app: FastifyInstance) {
           `Token verification timed out (${Math.max(1, Math.round(ACCOUNT_VERIFY_TIMEOUT_MS / 1000))}s)`,
         );
       } catch (err: any) {
+        logFailedUpstreamRequest({
+          scope: 'accounts/verify-token/session',
+          requestId: verificationRequestId,
+          url: `${site.url.replace(/\/+$/, '')}/api/user/self`,
+          method: 'GET',
+          headers: { Authorization: `Bearer ${accessToken}` },
+          error: err,
+        });
         if (isVerificationTimeoutError(err)) {
           const failure = buildVerificationFailureResponse(
             await diagnoseVerificationFailure(),
@@ -881,6 +912,14 @@ export async function accountsRoutes(app: FastifyInstance) {
         };
       }
 
+      logFailedUpstreamRequest({
+        scope: 'accounts/verify-token',
+        requestId: verificationRequestId,
+        url: `${site.url.replace(/\/+$/, '')}/api/user/self`,
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        error: new Error('credential type was not recognized'),
+      });
       return {
         success: false,
         message:

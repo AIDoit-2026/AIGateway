@@ -1,7 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
 import { fetch } from 'undici';
-import { config, normalizeTokenRouterFailureCooldownMaxSec } from '../../config.js';
+import {
+  config,
+  normalizeTokenRouterFailureCooldownMaxSec,
+  TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES_MAX,
+  TOKEN_ROUTER_FAILURE_THRESHOLD_MAX,
+} from '../../config.js';
 import { db, runtimeDbDialect, schema } from '../../db/index.js';
 import { upsertSetting } from '../../db/upsertSetting.js';
 import * as routeRefreshWorkflow from '../../services/routeRefreshWorkflow.js';
@@ -100,6 +105,8 @@ interface RuntimeSettingsBody {
   routingFallbackUnitCost?: number;
   proxyFirstByteTimeoutSec?: number;
   tokenRouterFailureCooldownMaxSec?: number;
+  tokenRouterFailureThreshold?: number;
+  tokenRouterFailureCooldownMinutes?: number;
   routingWeights?: Partial<RoutingWeights>;
   proxyErrorKeywords?: string[] | string;
   proxyEmptyContentFailEnabled?: boolean;
@@ -702,6 +709,18 @@ function applyImportedSettingToRuntime(key: string, value: unknown) {
       config.tokenRouterFailureCooldownMaxSec = normalized;
       return;
     }
+    case 'token_router_failure_threshold': {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1) return;
+      config.tokenRouterFailureThreshold = Math.min(TOKEN_ROUTER_FAILURE_THRESHOLD_MAX, Math.trunc(n));
+      return;
+    }
+    case 'token_router_failure_cooldown_minutes': {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1) return;
+      config.tokenRouterFailureCooldownMinutes = Math.min(TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES_MAX, Math.trunc(n));
+      return;
+    }
     case 'post_refresh_probe_enabled':
     case 'post_refresh_probe_model':
     case 'post_refresh_probe_scope':
@@ -739,6 +758,8 @@ function getRuntimeSettingsResponse(currentAdminIp = '') {
     routingFallbackUnitCost: config.routingFallbackUnitCost,
     proxyFirstByteTimeoutSec: config.proxyFirstByteTimeoutSec,
     tokenRouterFailureCooldownMaxSec: config.tokenRouterFailureCooldownMaxSec,
+    tokenRouterFailureThreshold: config.tokenRouterFailureThreshold,
+    tokenRouterFailureCooldownMinutes: config.tokenRouterFailureCooldownMinutes,
     routingWeights: config.routingWeights,
     webhookUrl: config.webhookUrl,
     barkUrl: config.barkUrl,
@@ -1720,6 +1741,32 @@ export async function settingsRoutes(app: FastifyInstance) {
       }
       config.tokenRouterFailureCooldownMaxSec = normalized;
       upsertSetting('token_router_failure_cooldown_max_sec', normalized);
+    }
+
+    if (body.tokenRouterFailureThreshold !== undefined) {
+      const proposed = Number(body.tokenRouterFailureThreshold);
+      if (!Number.isFinite(proposed) || proposed < 1) {
+        return reply.code(400).send({ success: false, message: '路由连续失败次数必须是大于 0 的整数' });
+      }
+      const normalized = Math.min(TOKEN_ROUTER_FAILURE_THRESHOLD_MAX, Math.trunc(proposed));
+      if (normalized !== config.tokenRouterFailureThreshold) {
+        changedLabels.push(`路由连续失败次数（${config.tokenRouterFailureThreshold} -> ${normalized}）`);
+      }
+      config.tokenRouterFailureThreshold = normalized;
+      upsertSetting('token_router_failure_threshold', normalized);
+    }
+
+    if (body.tokenRouterFailureCooldownMinutes !== undefined) {
+      const proposed = Number(body.tokenRouterFailureCooldownMinutes);
+      if (!Number.isFinite(proposed) || proposed < 1) {
+        return reply.code(400).send({ success: false, message: '路由失败冷却时间必须是大于 0 的整数（分钟）' });
+      }
+      const normalized = Math.min(TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES_MAX, Math.trunc(proposed));
+      if (normalized !== config.tokenRouterFailureCooldownMinutes) {
+        changedLabels.push(`路由失败冷却时间（${config.tokenRouterFailureCooldownMinutes}m -> ${normalized}m）`);
+      }
+      config.tokenRouterFailureCooldownMinutes = normalized;
+      upsertSetting('token_router_failure_cooldown_minutes', normalized);
     }
 
     if (pendingPayloadRules !== undefined) {

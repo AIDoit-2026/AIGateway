@@ -67,6 +67,8 @@ describe('settings and auth events', () => {
     config.routingFallbackUnitCost = 1;
     (config as any).proxyFirstByteTimeoutSec = 0;
     (config as any).tokenRouterFailureCooldownMaxSec = 30 * 24 * 60 * 60;
+    (config as any).tokenRouterFailureThreshold = 3;
+    (config as any).tokenRouterFailureCooldownMinutes = 10;
     (config as any).disableCrossProtocolFallback = false;
     (config as any).payloadRules = {
       default: [],
@@ -591,6 +593,27 @@ describe('settings and auth events', () => {
     expect(getResponse.statusCode).toBe(200);
     const runtime = getResponse.json() as { tokenRouterFailureCooldownMaxSec?: number };
     expect(runtime.tokenRouterFailureCooldownMaxSec).toBe(2 * 24 * 60 * 60);
+  });
+
+  it('persists the stable routing failure threshold and cooldown duration', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/settings/runtime',
+      payload: {
+        tokenRouterFailureThreshold: 5,
+        tokenRouterFailureCooldownMinutes: 12,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      tokenRouterFailureThreshold: 5,
+      tokenRouterFailureCooldownMinutes: 12,
+    });
+    const threshold = await db.select().from(schema.settings).where(eq(schema.settings.key, 'token_router_failure_threshold')).get();
+    const cooldown = await db.select().from(schema.settings).where(eq(schema.settings.key, 'token_router_failure_cooldown_minutes')).get();
+    expect(threshold?.value).toBe(JSON.stringify(5));
+    expect(cooldown?.value).toBe(JSON.stringify(12));
   });
 
   it('clamps token router failure cooldown cap to the supported ceiling', async () => {

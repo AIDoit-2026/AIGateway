@@ -797,7 +797,7 @@ export async function tokensRoutes(app: FastifyInstance) {
       displayIcon: route.displayIcon,
       routeMode: route.routeMode,
       sourceRouteIds: route.sourceRouteIds,
-      routingStrategy: route.routingStrategy,
+      routingStrategy: normalizeRouteRoutingStrategy(route.routingStrategy),
       enabled: route.enabled,
     }));
   });
@@ -824,7 +824,7 @@ export async function tokensRoutes(app: FastifyInstance) {
         routeMode: route.routeMode,
         sourceRouteIds: route.sourceRouteIds,
         modelMapping: route.modelMapping ?? null,
-        routingStrategy: route.routingStrategy ?? 'weighted',
+        routingStrategy: normalizeRouteRoutingStrategy(route.routingStrategy),
         enabled: route.enabled,
         channelCount: agg?.channelCount ?? 0,
         enabledChannelCount: agg?.enabledChannelCount ?? 0,

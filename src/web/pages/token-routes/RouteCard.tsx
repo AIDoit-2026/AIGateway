@@ -586,23 +586,11 @@ function RouteCardInner({
   const showAddChannelButton = !readOnlyRoute && !channelManagementDisabled;
   const showMissingTokenHints = !channelManagementDisabled && (missingTokenSiteItems.length > 0 || missingTokenGroupItems.length > 0);
   const routeUnits = collectRouteUnits(channels);
-  const routingStrategyOptions = [
-    {
-      value: 'weighted',
-      label: tr('权重随机'),
-      description: getRouteRoutingStrategyDescription('weighted'),
-    },
-    {
-      value: 'round_robin',
-      label: tr('轮询'),
-      description: getRouteRoutingStrategyDescription('round_robin'),
-    },
-    {
-      value: 'stable_first',
-      label: tr('稳定优先'),
-      description: getRouteRoutingStrategyDescription('stable_first'),
-    },
-  ] as const;
+  const routingStrategyOptions = [{
+    value: 'stable_first',
+    label: tr('稳定优先'),
+    description: getRouteRoutingStrategyDescription('stable_first'),
+  }] as const;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

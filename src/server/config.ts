@@ -8,6 +8,8 @@ const DEFAULT_CLAUDE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 const DEFAULT_GEMINI_CLI_CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
 const DEFAULT_GEMINI_CLI_CLIENT_SECRET = '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';
 export const TOKEN_ROUTER_FAILURE_COOLDOWN_MAX_SEC_CEILING = 30 * 24 * 60 * 60;
+export const TOKEN_ROUTER_FAILURE_THRESHOLD_MAX = 100;
+export const TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES_MAX = 30 * 24 * 60;
 
 function parseBoolean(value: string | undefined, fallback = false): boolean {
   if (value === undefined) return fallback;
@@ -123,6 +125,14 @@ export function buildConfig(env: NodeJS.ProcessEnv) {
     tokenRouterFailureCooldownMaxSec: normalizeTokenRouterFailureCooldownMaxSec(
       parseNumber(env.TOKEN_ROUTER_FAILURE_COOLDOWN_MAX_SEC, TOKEN_ROUTER_FAILURE_COOLDOWN_MAX_SEC_CEILING),
     ) ?? TOKEN_ROUTER_FAILURE_COOLDOWN_MAX_SEC_CEILING,
+    tokenRouterFailureThreshold: Math.min(
+      TOKEN_ROUTER_FAILURE_THRESHOLD_MAX,
+      Math.max(1, Math.trunc(parseNumber(env.TOKEN_ROUTER_FAILURE_THRESHOLD, 3))),
+    ),
+    tokenRouterFailureCooldownMinutes: Math.min(
+      TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES_MAX,
+      Math.max(1, Math.trunc(parseNumber(env.TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES, 10))),
+    ),
     tokenRouterCacheTtlMs: Math.max(100, Math.trunc(parseNumber(env.TOKEN_ROUTER_CACHE_TTL_MS, 1_500))),
     proxyMaxChannelAttempts: Math.max(1, Math.trunc(parseNumber(env.PROXY_MAX_CHANNEL_ATTEMPTS, 3))),
     proxyStickySessionEnabled: parseBoolean(env.PROXY_STICKY_SESSION_ENABLED, true),
@@ -179,7 +189,7 @@ export function buildFastifyOptions(
   appConfig: ReturnType<typeof buildConfig>,
 ): FastifyServerOptions {
   return {
-    logger: true,
+    logger: { level: 'warn' },
     trustProxy: true,
     bodyLimit: appConfig.requestBodyLimit,
   };

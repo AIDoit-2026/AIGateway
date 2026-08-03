@@ -66,6 +66,8 @@ type RuntimeSettings = {
   proxyFirstByteTimeoutSec: number;
   routeFailureCooldownMaxValue: number;
   routeFailureCooldownMaxUnit: RouteCooldownUnit;
+  tokenRouterFailureThreshold: number;
+  tokenRouterFailureCooldownMinutes: number;
   routingWeights: RoutingWeights;
   systemProxyUrl: string;
   proxyErrorKeywords: string[];
@@ -348,6 +350,8 @@ export default function Settings() {
     proxyFirstByteTimeoutSec: 0,
     routeFailureCooldownMaxValue: 30,
     routeFailureCooldownMaxUnit: 'day',
+    tokenRouterFailureThreshold: 3,
+    tokenRouterFailureCooldownMinutes: 10,
     routingWeights: defaultWeights,
     systemProxyUrl: '',
     proxyErrorKeywords: [],
@@ -680,6 +684,12 @@ export default function Settings() {
           : 0,
         routeFailureCooldownMaxValue: routeCooldownInput.value,
         routeFailureCooldownMaxUnit: routeCooldownInput.unit,
+        tokenRouterFailureThreshold: Number(runtimeInfo.tokenRouterFailureThreshold) >= 1
+          ? Math.trunc(Number(runtimeInfo.tokenRouterFailureThreshold))
+          : 3,
+        tokenRouterFailureCooldownMinutes: Number(runtimeInfo.tokenRouterFailureCooldownMinutes) >= 1
+          ? Math.trunc(Number(runtimeInfo.tokenRouterFailureCooldownMinutes))
+          : 10,
         routingWeights: {
           ...defaultWeights,
           ...(runtimeInfo.routingWeights || {}),
@@ -1031,6 +1041,8 @@ export default function Settings() {
           runtime.routeFailureCooldownMaxValue,
           runtime.routeFailureCooldownMaxUnit,
         ),
+        tokenRouterFailureThreshold: runtime.tokenRouterFailureThreshold,
+        tokenRouterFailureCooldownMinutes: runtime.tokenRouterFailureCooldownMinutes,
         disableCrossProtocolFallback: runtime.disableCrossProtocolFallback,
       });
       toast.success('Routing weights saved');
@@ -1991,6 +2003,30 @@ export default function Settings() {
               }}
               style={inputStyle}
             />
+          </div>
+          <div style={{ marginBottom: 12, maxWidth: 420 }}>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>
+              稳定优先失败策略
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+              <label style={{ flex: '1 1 180px' }}>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>连续失败次数</span>
+                <input type="number" min={1} step={1} value={runtime.tokenRouterFailureThreshold} onChange={(e) => {
+                  const value = Math.trunc(Number(e.target.value));
+                  if (Number.isFinite(value) && value >= 1) setRuntime((prev) => ({ ...prev, tokenRouterFailureThreshold: value }));
+                }} style={inputStyle} />
+              </label>
+              <label style={{ flex: '1 1 180px' }}>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>冷却时间（分钟）</span>
+                <input type="number" min={1} step={1} value={runtime.tokenRouterFailureCooldownMinutes} onChange={(e) => {
+                  const value = Math.trunc(Number(e.target.value));
+                  if (Number.isFinite(value) && value >= 1) setRuntime((prev) => ({ ...prev, tokenRouterFailureCooldownMinutes: value }));
+                }} style={inputStyle} />
+              </label>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6, lineHeight: 1.6 }}>
+              通道连续失败达到设定次数后将被冷却，期间按优先序尝试下一条可用通道。
+            </div>
           </div>
           <div style={{ marginBottom: 12, maxWidth: 420 }}>
             <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>
