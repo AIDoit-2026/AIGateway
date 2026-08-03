@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { RequestInit as UndiciRequestInit } from 'undici';
 import { withSiteProxyRequestInit } from '../siteProxy.js';
+import { logVerifyTokenUpstreamFailure } from '../verifyTokenObservability.js';
 
 export interface CheckinResult {
   success: boolean;
@@ -230,11 +231,20 @@ export abstract class BasePlatformAdapter implements PlatformAdapter {
       },
     };
     const proxiedRequestOptions = await withSiteProxyRequestInit(url, requestOptions);
-    const res = await fetch(url, proxiedRequestOptions);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const startedAtMs = Date.now();
+    let responseStatus: number | null = null;
+    try {
+      const res = await fetch(url, proxiedRequestOptions);
+      responseStatus = res.status;
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      return res.json() as Promise<T>;
+    } catch (error) {
+      logVerifyTokenUpstreamFailure({ stage: 'adapter-fetch-json', url, method: String(options?.method || 'GET'), headers: options?.headers as Record<string, string>, status: responseStatus, durationMs: Date.now() - startedAtMs, error });
+      throw error;
     }
-    return res.json() as Promise<T>;
   }
 
   protected buildNoticeSourceKey(content: string): string {

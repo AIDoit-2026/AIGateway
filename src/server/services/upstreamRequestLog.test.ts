@@ -13,6 +13,7 @@ describe('summarizeFailedUpstreamRequest', () => {
       },
       body: JSON.stringify({ token: 'body-secret', prompt: 'x'.repeat(2_100) }),
       error: new Error('network timeout'),
+      durationMs: 321,
     });
 
     expect(summary.url).toBe('https://upstream.example/v1/models?api_key=%5BREDACTED%5D&safe=value');
@@ -24,5 +25,6 @@ describe('summarizeFailedUpstreamRequest', () => {
     expect(summary.body).toContain('"token":"[REDACTED]"');
     expect(summary.body).toHaveLength(2_048);
     expect(summary.errorCategory).toBe('timeout');
+    expect(summary.durationMs).toBe(321);
   });
 });

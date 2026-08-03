@@ -2,6 +2,7 @@ import { ApiTokenInfo, BasePlatformAdapter, CheckinResult, BalanceInfo, UserInfo
 import type { RequestInit as UndiciRequestInit } from 'undici';
 import { createContext, runInContext } from 'node:vm';
 import { withSiteProxyRequestInit } from '../siteProxy.js';
+import { logVerifyTokenUpstreamFailure } from '../verifyTokenObservability.js';
 import { fetchJsonWithShieldCookieRetry } from './newApiShield.js';
 
 export class NewApiAdapter extends BasePlatformAdapter {
@@ -730,14 +731,24 @@ export class NewApiAdapter extends BasePlatformAdapter {
     }
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      const startedAtMs = Date.now();
       const requestOptions: UndiciRequestInit = {
         ...options,
         body: options?.body ?? undefined,
         headers,
       };
       const proxiedRequestOptions = await withSiteProxyRequestInit(url, requestOptions);
-      const res = await fetch(url, proxiedRequestOptions);
+      let res: Response;
+      try {
+        res = await fetch(url, proxiedRequestOptions);
+      } catch (error) {
+        logVerifyTokenUpstreamFailure({ stage: 'new-api-fetch-json', url, method: String(options?.method || 'GET'), headers, durationMs: Date.now() - startedAtMs, error });
+        throw error;
+      }
       const text = await res.text();
+      if (!res.ok) {
+        logVerifyTokenUpstreamFailure({ stage: 'new-api-fetch-json', url, method: String(options?.method || 'GET'), headers, status: res.status, durationMs: Date.now() - startedAtMs, error: new Error(text || `HTTP ${res.status}`) });
+      }
       const getSetCookie = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
       if (typeof getSetCookie === 'function') {
         cookieHeader = this.mergeSetCookiePairs(cookieHeader, getSetCookie.call(res.headers) || []);

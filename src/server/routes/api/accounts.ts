@@ -55,6 +55,7 @@ import {
 } from "../../services/apiKeyBatch.js";
 import { createManualAccount } from "../../services/manualAccountCreationService.js";
 import { logFailedUpstreamRequest } from "../../services/upstreamRequestLog.js";
+import { logVerifyTokenFailure, logVerifyTokenUpstreamFailure, runVerifyTokenContext } from "../../services/verifyTokenObservability.js";
 
 type AccountWithSiteRow = {
   accounts: typeof schema.accounts.$inferSelect;
@@ -229,6 +230,7 @@ async function getNextAccountSortOrder(): Promise<number> {
 const ACCOUNT_HEALTH_REFRESH_TIMEOUT_MS = 10_000;
 const ACCOUNT_VERIFY_TIMEOUT_MS = 10_000;
 const ACCOUNT_VERIFY_DIAG_TIMEOUT_MS = 2_500;
+const ACCOUNT_VERIFY_DIAG_MAX_REQUESTS = 6;
 
 function summarizeAccountHealthRefresh(results: AccountHealthRefreshResult[]) {
   return {
@@ -480,7 +482,7 @@ export async function accountsRoutes(app: FastifyInstance) {
       const verificationRequestId = request.id;
       const parsedBody = parseAccountVerifyTokenPayload(request.body);
       if (!parsedBody.success) {
-        console.warn('[accounts/verify-token] rejected invalid payload', { requestId: verificationRequestId, reason: parsedBody.error });
+        logVerifyTokenFailure({ requestId: verificationRequestId, stage: 'input', message: parsedBody.error });
         return reply
           .code(400)
           .send({ success: false, message: parsedBody.error });
@@ -496,16 +498,19 @@ export async function accountsRoutes(app: FastifyInstance) {
         .from(schema.sites)
         .where(eq(schema.sites.id, siteId))
         .get();
-      if (!site) return { success: false, message: "site not found" };
+      if (!site) {
+        logVerifyTokenFailure({ requestId: verificationRequestId, stage: 'site-lookup', siteId, message: 'site not found' });
+        return { success: false, message: "site not found" };
+      }
 
       if (!accessToken) {
-        console.warn('[accounts/verify-token] rejected empty credential', { requestId: verificationRequestId, siteId });
+        logVerifyTokenFailure({ requestId: verificationRequestId, stage: 'input', siteId, platform: site.platform, message: 'empty credential' });
         return { success: false, message: "Token 不能为空" };
       }
 
       const adapter = getAdapter(site.platform);
       if (!adapter)
-        console.warn('[accounts/verify-token] rejected unsupported platform', { requestId: verificationRequestId, siteId, platform: site.platform });
+        logVerifyTokenFailure({ requestId: verificationRequestId, stage: 'platform', siteId, platform: site.platform, message: 'unsupported platform' });
       if (!adapter)
         return { success: false, message: `不支持的平台: ${site.platform}` };
 
@@ -562,6 +567,7 @@ export async function accountsRoutes(app: FastifyInstance) {
 
         try {
           const { fetch } = await import("undici");
+          let diagnosticRequestCount = 0;
           const candidates = new Set<string>();
           const raw = accessToken.startsWith("Bearer ")
             ? accessToken.slice(7).trim()
@@ -600,6 +606,9 @@ export async function accountsRoutes(app: FastifyInstance) {
             let sawNetworkError = false;
             let sawResponse = false;
             for (const headers of headerVariants) {
+              if (diagnosticRequestCount >= ACCOUNT_VERIFY_DIAG_MAX_REQUESTS) break;
+              diagnosticRequestCount += 1;
+              const diagnosticStartedAtMs = Date.now();
               try {
                 const testRes = await fetch(
                   `${baseUrl.replace(/\/+$/, "")}/api/user/self`,
@@ -612,8 +621,27 @@ export async function accountsRoutes(app: FastifyInstance) {
                 const bodyText = await testRes.text();
                 const contentType = testRes.headers.get("content-type") || "";
                 const reason = parseFailureReason(bodyText, contentType);
+                if (!testRes.ok || reason) {
+                  logVerifyTokenUpstreamFailure({
+                    stage: `diagnostic/self/${headers.Cookie ? 'cookie' : 'bearer'}`,
+                    url: `${baseUrl.replace(/\/+$/, '')}/api/user/self`,
+                    method: 'GET',
+                    headers,
+                    status: testRes.status,
+                    durationMs: Date.now() - diagnosticStartedAtMs,
+                    error: new Error(reason || `HTTP ${testRes.status}`),
+                  });
+                }
                 if (reason) return reason;
-              } catch {
+              } catch (error) {
+                logVerifyTokenUpstreamFailure({
+                  stage: `diagnostic/self/${headers.Cookie ? 'cookie' : 'bearer'}`,
+                  url: `${baseUrl.replace(/\/+$/, '')}/api/user/self`,
+                  method: 'GET',
+                  headers,
+                  durationMs: Date.now() - diagnosticStartedAtMs,
+                  error,
+                });
                 sawNetworkError = true;
               }
             }
@@ -636,6 +664,16 @@ export async function accountsRoutes(app: FastifyInstance) {
       const buildVerificationFailureResponse = (
         failureReason: VerifyFailureReason,
       ) => {
+        if (failureReason) {
+          logVerifyTokenFailure({
+            requestId: verificationRequestId,
+            stage: 'diagnostic',
+            siteId,
+            platform: normalizedPlatform,
+            credentialMode,
+            message: failureReason,
+          });
+        }
         if (failureReason === "needs-user-id") {
           return {
             success: false,
@@ -680,11 +718,9 @@ export async function accountsRoutes(app: FastifyInstance) {
 
       if (credentialMode === "apikey") {
         try {
-          const models = await getModelsWithSiteApiEndpointPool(
-            site,
-            adapter,
-            accessToken,
-            parsedPlatformUserId,
+          const models = await runVerifyTokenContext(
+            { requestId: verificationRequestId, platform: normalizedPlatform },
+            () => getModelsWithSiteApiEndpointPool(site, adapter, accessToken, parsedPlatformUserId),
           );
           const availableModels = Array.isArray(models)
             ? models.filter(
@@ -739,8 +775,10 @@ export async function accountsRoutes(app: FastifyInstance) {
       let result: any;
       try {
         result = await withTimeout(
-          () =>
-            adapter.verifyToken(site.url, accessToken, parsedPlatformUserId),
+          () => runVerifyTokenContext(
+            { requestId: verificationRequestId, platform: normalizedPlatform },
+            () => adapter.verifyToken(site.url, accessToken, parsedPlatformUserId),
+          ),
           ACCOUNT_VERIFY_TIMEOUT_MS,
           `Token verification timed out (${Math.max(1, Math.round(ACCOUNT_VERIFY_TIMEOUT_MS / 1000))}s)`,
         );
@@ -779,6 +817,7 @@ export async function accountsRoutes(app: FastifyInstance) {
 
       if (result.tokenType === "apikey") {
         if (credentialMode === "session") {
+          logVerifyTokenFailure({ requestId: verificationRequestId, stage: 'credential-mode', siteId, platform: normalizedPlatform, credentialMode, message: 'API Key supplied in session mode' });
           return {
             success: false,
             message:

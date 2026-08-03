@@ -11,6 +11,7 @@ export interface FailedUpstreamRequestInput {
   body?: string | null;
   status?: number | null;
   error?: unknown;
+  durationMs?: number;
 }
 
 export interface FailedUpstreamRequestSummary {
@@ -21,6 +22,7 @@ export interface FailedUpstreamRequestSummary {
   status: number | null;
   errorCategory: UpstreamFailureCategory;
   errorMessage: string;
+  durationMs?: number;
 }
 
 function redactUrl(rawUrl: string): string {
@@ -82,6 +84,7 @@ export function summarizeFailedUpstreamRequest(input: FailedUpstreamRequestInput
     status: typeof input.status === 'number' ? input.status : null,
     errorCategory: classifyFailure(input.status, message, input.body),
     errorMessage: message.slice(0, 512),
+    ...(typeof input.durationMs === 'number' ? { durationMs: Math.max(0, Math.trunc(input.durationMs)) } : {}),
   };
 }
 
