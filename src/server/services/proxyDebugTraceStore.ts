@@ -25,6 +25,12 @@ export type ProxyDebugTraceSession = {
 
 let lastPruneAtMs = 0;
 const PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+const SENSITIVE_DEBUG_KEY = /(?:^|[-_])(authorization|cookie|api[-_]?key|token|secret|password|access[-_]?token)(?:$|[-_])/i;
+const SENSITIVE_DEBUG_TEXT = /((?:api[-_]?key|token|secret|password|access[-_]?token)\s*[=:]\s*)[^&\s,}]+/gi;
+
+function sanitizeDebugText(value: string | null | undefined): string | null {
+  return typeof value === 'string' ? value.replace(SENSITIVE_DEBUG_TEXT, '$1[REDACTED]') : null;
+}
 
 type TruncatedDebugPreview = {
   __metapiTruncated: true;
@@ -47,12 +53,22 @@ function buildTruncatedDebugPreview(text: string, maxBytes: number, originalByte
 function stringifyDebugValue(value: unknown, maxBytes: number): string | null {
   if (value == null) return null;
 
+  const sanitize = (input: unknown, key = ''): unknown => {
+    if (SENSITIVE_DEBUG_KEY.test(key)) return '[REDACTED]';
+    if (Array.isArray(input)) return input.map((item) => sanitize(item));
+    if (input && typeof input === 'object') {
+      return Object.fromEntries(Object.entries(input as Record<string, unknown>)
+        .map(([entryKey, entryValue]) => [entryKey, sanitize(entryValue, entryKey)]));
+    }
+    return input;
+  };
+
   let text = '';
   if (typeof value === 'string') {
-    text = value;
+    text = value.replace(SENSITIVE_DEBUG_TEXT, '$1[REDACTED]');
   } else {
     try {
-      text = JSON.stringify(value, null, 2);
+      text = JSON.stringify(sanitize(value), null, 2);
     } catch {
       text = String(value);
     }
@@ -74,7 +90,8 @@ function normalizeHeadersValue(value: HeadersLike): Record<string, unknown> | nu
   if (typeof headerEntries.get === 'function' && typeof headerEntries.entries === 'function') {
     return Object.fromEntries(
       [...headerEntries.entries.call(value) as Iterable<[string, string]>]
-        .sort((left, right) => left[0].localeCompare(right[0])),
+        .sort((left, right) => left[0].localeCompare(right[0]))
+        .map(([key, headerValue]) => [key, SENSITIVE_DEBUG_KEY.test(key) ? '[REDACTED]' : headerValue]),
     );
   }
 
@@ -85,7 +102,10 @@ function normalizeHeadersValue(value: HeadersLike): Record<string, unknown> | nu
   const entries = Object.entries(value)
     .filter(([key]) => !!key)
     .sort((left, right) => left[0].localeCompare(right[0]));
-  return Object.fromEntries(entries);
+  return Object.fromEntries(entries.map(([key, headerValue]) => [
+    key,
+    SENSITIVE_DEBUG_KEY.test(key) ? '[REDACTED]' : headerValue,
+  ]));
 }
 
 function normalizeLimit(rawLimit: number | undefined): number {
@@ -298,14 +318,14 @@ export async function insertProxyDebugAttempt(input: {
     attemptIndex: input.attemptIndex,
     endpoint: input.endpoint,
     requestPath: input.requestPath,
-    targetUrl: input.targetUrl,
+    targetUrl: sanitizeDebugText(input.targetUrl) || input.targetUrl,
     runtimeExecutor: input.runtimeExecutor ?? null,
     requestHeadersJson: serializeHeaders(input.requestHeaders, maxBodyBytes),
     requestBodyJson: stringifyDebugValue(input.requestBody, maxBodyBytes),
     responseStatus: input.responseStatus ?? null,
     responseHeadersJson: serializeHeaders(input.responseHeaders, maxBodyBytes),
     responseBodyJson: stringifyDebugValue(input.responseBody, maxBodyBytes),
-    rawErrorText: input.rawErrorText ?? null,
+    rawErrorText: sanitizeDebugText(input.rawErrorText),
     recoverApplied: input.recoverApplied === true,
     downgradeDecision: input.downgradeDecision === true,
     downgradeReason: input.downgradeReason ?? null,

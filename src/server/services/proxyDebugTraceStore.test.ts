@@ -138,11 +138,13 @@ describe('proxyDebugTraceStore', () => {
     });
 
     const detail = await store.getProxyDebugTraceDetail(trace.id);
-    expect(detail?.trace.requestHeadersJson || '').toContain('Bearer developer-token');
+    expect(detail?.trace.requestHeadersJson || '').toContain('[REDACTED]');
+    expect(detail?.trace.requestHeadersJson || '').not.toContain('developer-token');
     expect(detail?.trace.requestBodyJson || '').toContain('"hello"');
     expect(detail?.trace.finalResponseBodyJson || '').toContain('Channel busy');
     expect(detail?.attempts).toHaveLength(1);
-    expect(detail?.attempts[0]?.requestHeadersJson || '').toContain('developer-token');
+    expect(detail?.attempts[0]?.requestHeadersJson || '').toContain('[REDACTED]');
+    expect(detail?.attempts[0]?.requestHeadersJson || '').not.toContain('developer-token');
     expect(detail?.attempts[0]?.responseBodyJson || '').toContain('forbidden');
     expect(detail?.attempts[0]).toMatchObject({
       endpoint: 'responses',
@@ -163,6 +165,7 @@ describe('proxyDebugTraceStore', () => {
       },
       requestBody: {
         model: 'gpt-5.4',
+        api_key: 'body-secret',
         input: [{ role: 'user', content: 'hello '.repeat(2000) }],
       },
       maxBodyBytes: 1024,
@@ -183,6 +186,8 @@ describe('proxyDebugTraceStore', () => {
     });
     expect(typeof bodyPayload.preview).toBe('string');
     expect(bodyPayload.preview).toContain('"model": "gpt-5.4"');
+    expect(bodyPayload.preview).toContain('"api_key": "[REDACTED]"');
+    expect(bodyPayload.preview).not.toContain('body-secret');
   });
 
   it('normalizes undici response headers for proxy debug capture', () => {

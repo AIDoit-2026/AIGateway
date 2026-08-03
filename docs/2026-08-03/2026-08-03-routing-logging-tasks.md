@@ -20,9 +20,9 @@ status: proposed
 - [x] 将 `endpointFlow`、`sharedSurface`、各协议 surface 及外部请求 helper 接入统一 helper，正常 verbose 分支降为 debug 或移除。
 - [x] 调整 Fastify/scheduler 的正常完成日志级别，保留启动、配置切换和异常日志。
 - [x] 为日志 helper 添加单测：凭据掩码、URL/query 脱敏、大小限制、timeout/HTTP 错误分类、正常路径不打印 body。
-- [ ] 检查 proxy debug trace 与新日志策略的边界，避免同一请求重复保存敏感内容。
+- [x] 检查 proxy debug trace 与新日志策略的边界，避免同一请求重复保存敏感内容。
 
-进行中：Fastify 常规请求日志已降为 `warn`；scheduler 正常开始、成功完成和计划摘要不再打印；`executeEndpointFlow()` 与共享 failure toolkit 已接入统一的脱敏失败日志，并覆盖非成功 HTTP 响应、检测失败和获取 Response 前的网络异常。仅剩 proxy debug trace 边界检查。
+已完成：Fastify 常规请求日志已降为 `warn`；scheduler 正常开始、成功完成和计划摘要不再打印；`executeEndpointFlow()` 与共享 failure toolkit 已接入统一的脱敏失败日志，并覆盖非成功 HTTP 响应、检测失败和获取 Response 前的网络异常；proxy debug trace 落库前会脱敏 headers、body、target URL 和错误文本。相关测试已更新，但本机缺少 `vitest`，尚未执行。
 
 ## C. verify-token 日志与诊断
 
