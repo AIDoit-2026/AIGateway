@@ -19,7 +19,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { BrandGlyph, InlineBrandIcon, type BrandInfo } from '../../components/BrandIcon.js';
-import ModernSelect from '../../components/ModernSelect.js';
 import { tr } from '../../i18n.js';
 import { formatDateTimeMinuteLocal } from '../helpers/checkinLogTime.js';
 import type {
@@ -586,12 +585,6 @@ function RouteCardInner({
   const showAddChannelButton = !readOnlyRoute && !channelManagementDisabled;
   const showMissingTokenHints = !channelManagementDisabled && (missingTokenSiteItems.length > 0 || missingTokenGroupItems.length > 0);
   const routeUnits = collectRouteUnits(channels);
-  const routingStrategyOptions = [{
-    value: 'stable_first',
-    label: tr('稳定优先'),
-    description: getRouteRoutingStrategyDescription('stable_first'),
-  }] as const;
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -1034,22 +1027,16 @@ function RouteCardInner({
                   {tr('路由策略')}
                 </div>
                 <div
-                  data-testid="compact-route-strategy-select"
+                  data-testid="compact-route-strategy"
                   style={{
                     flex: '0 0 168px',
                     minWidth: 168,
                     maxWidth: 168,
+                    fontSize: 12,
+                    color: 'var(--color-text-primary)',
                   }}
                 >
-                  <ModernSelect
-                    size="sm"
-                    value={routingStrategy}
-                    disabled={updatingRoutingStrategy}
-                    onChange={(nextValue) => onRoutingStrategyChange(route, nextValue as RouteRoutingStrategy)}
-                    options={routingStrategyOptions.map((option) => ({ value: option.value, label: option.label }))}
-                    placeholder={tr('选择路由策略')}
-                    emptyLabel={tr('暂无可选策略')}
-                  />
+                  {getRouteRoutingStrategyLabel(routingStrategy)}
                 </div>
               </div>
               {showAddChannelButton ? renderAddChannelButton({ alignRight: true }) : null}
@@ -1069,15 +1056,9 @@ function RouteCardInner({
                   flex: '1 1 220px',
                 }}
               >
-                <ModernSelect
-                  size="sm"
-                  value={routingStrategy}
-                  disabled={updatingRoutingStrategy}
-                  onChange={(nextValue) => onRoutingStrategyChange(route, nextValue as RouteRoutingStrategy)}
-                  options={routingStrategyOptions.map((option) => ({ ...option }))}
-                  placeholder={tr('选择路由策略')}
-                  emptyLabel={tr('暂无可选策略')}
-                />
+                <div style={{ fontSize: 13, color: 'var(--color-text-primary)', minHeight: 30, display: 'flex', alignItems: 'center' }}>
+                  {getRouteRoutingStrategyLabel(routingStrategy)}
+                </div>
                 <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--color-text-secondary)' }}>
                     {routingStrategyDescription}

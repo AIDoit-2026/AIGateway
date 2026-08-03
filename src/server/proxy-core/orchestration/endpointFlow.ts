@@ -122,22 +122,38 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
       : defaultTarget;
 
     const attemptStartedAtMs = Date.now();
-    let response = await fetchWithObservedFirstByte(
-      async (signal) => (
-        input.dispatchRequest
-          ? await input.dispatchRequest(request, targetUrl, signal)
-          : await fetch(targetUrl, await withSiteProxyRequestInit(targetUrl, {
-            method: 'POST',
-            headers: request.headers,
-            body: JSON.stringify(request.body),
-            signal,
-          }))
-      ),
-      {
-        firstByteTimeoutMs: input.firstByteTimeoutMs,
-        startedAtMs: attemptStartedAtMs,
-      },
-    );
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetchWithObservedFirstByte(
+        async (signal) => (
+          input.dispatchRequest
+            ? await input.dispatchRequest(request, targetUrl, signal)
+            : await fetch(targetUrl, await withSiteProxyRequestInit(targetUrl, {
+              method: 'POST',
+              headers: request.headers,
+              body: JSON.stringify(request.body),
+              signal,
+            }))
+        ),
+        {
+          firstByteTimeoutMs: input.firstByteTimeoutMs,
+          startedAtMs: attemptStartedAtMs,
+        },
+      );
+    } catch (error) {
+      logFailedUpstreamRequest({
+        scope: 'proxy/endpoint-flow',
+        url: targetUrl,
+        method: 'POST',
+        headers: request.headers,
+        body: JSON.stringify(request.body),
+        error,
+      });
+      finalStatus = 502;
+      finalErrText = error instanceof Error ? error.message : 'network failure';
+      if (input.disableCrossProtocolFallback || endpointIndex >= endpointCount - 1) break;
+      continue;
+    }
 
     if (response.ok) {
       await runEndpointFlowHook(input.onAttemptSuccess, {

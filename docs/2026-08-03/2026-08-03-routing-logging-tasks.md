@@ -22,6 +22,8 @@ status: proposed
 - [x] 为日志 helper 添加单测：凭据掩码、URL/query 脱敏、大小限制、timeout/HTTP 错误分类、正常路径不打印 body。
 - [ ] 检查 proxy debug trace 与新日志策略的边界，避免同一请求重复保存敏感内容。
 
+进行中：Fastify 常规请求日志已降为 `warn`；`executeEndpointFlow()` 已接入统一的脱敏失败日志，并覆盖非成功 HTTP 响应和获取 Response 前的网络异常。其余 protocol surface、scheduler 和 proxy debug trace 尚待统一收敛。
+
 ## C. verify-token 日志与诊断
 
 - [ ] 在 `accounts.ts` 创建 request correlation ID，并统一封装所有失败返回的结构化日志。
@@ -29,6 +31,8 @@ status: proposed
 - [ ] 为 API Key endpoint pool 和 New-API/AnyRouter 诊断变体增加可辨识的阶段名；禁止记录原始 Authorization、Cookie 和 token。
 - [ ] 明确超时后的诊断请求预算，避免诊断本身放大请求量；增加超时和诊断失败测试。
 - [ ] 更新管理 API/运维文档，说明需要提供的脱敏信息、关联 ID 和采集方式，不要求用户提交明文 token。
+
+进行中：`verify-token` 已为 API Key、Session、空模型和未知凭据失败记录关联 ID、目标与认证形态；平台适配器的所有后续请求阶段和诊断预算尚未完成统一封装。
 
 ## D. 稳定优先策略
 
@@ -40,11 +44,15 @@ status: proposed
 - [ ] 补充选择顺序、连续 N 次失败、M 分钟冷却、冷却跳过、恢复后重新可选、全部冷却和并发请求测试。
 - [ ] 评估 `route_channels.priority` 是否足以表达需求；只有不足时才按数据库三件套新增字段/迁移/生成产物。
 
+进行中：实际选择已按 `priority`、再按 channel ID 确定性排序；TokenRoutes 已固定显示稳定优先，不再提供其它策略选择。旧选择分支的代码删除、冷却可视化和完整回归测试仍待完成。
+
 ## E. 重复响应修复与回归
 
 - [ ] 在 `executeEndpointFlow()`/`sharedSurface.ts` 增加单一 response owner 保护和 attempt 计数，确保响应提交后不再切换候选。
 - [ ] 对流式响应增加“首字节/headers 已提交”边界测试，验证失败重试不会二次写入。
 - [ ] 将多 API Key 回归测试接入 CI，并记录每次下游请求的最终 channel ID。
+
+初步结论：`executeEndpointFlow()` 逐个 `await` endpoint 候选，失败后才进入下一个候选，不会并行发送多个 endpoint 请求。仍需以同站点多 API Key 的流式/非流式集成测试验证整条 surface 的单一响应提交行为。
 
 ## F. 验证与交付
 
