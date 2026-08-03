@@ -41,6 +41,8 @@ export type RouteChannel = {
   manualOverride: boolean;
   successCount: number;
   failCount: number;
+  consecutiveFailCount?: number;
+  cooldownLevel?: number;
   cooldownUntil?: string | null;
   account?: {
     username: string | null;

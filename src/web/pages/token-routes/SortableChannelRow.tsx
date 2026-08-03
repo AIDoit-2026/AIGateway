@@ -7,7 +7,7 @@ import {
   describeTokenBinding,
   resolveTokenBindingConnectionMode,
 } from './tokenBindingPresentation.js';
-import { getChannelDecisionState, getPriorityTagStyle, getProbabilityColor } from './utils.js';
+import { formatCooldownRemaining, getChannelDecisionState, getPriorityTagStyle, getProbabilityColor } from './utils.js';
 
 function getRouteUnitStrategyLabel(strategy: string | null | undefined): string {
   return strategy === 'stick_until_unavailable' ? '单个用到不可用再切' : '轮询';
@@ -104,6 +104,8 @@ export function SortableChannelRow({
     ? routeUnit.members.map((member) => formatRouteUnitMemberLabel(member)).join('、')
     : null;
   const routeUnitMemberSummaryText = routeUnitMemberSummary ? `成员：${routeUnitMemberSummary}` : null;
+  const cooldownRemaining = formatCooldownRemaining(channel.cooldownUntil);
+  const consecutiveFailures = channel.consecutiveFailCount || 0;
 
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
@@ -163,6 +165,16 @@ export function SortableChannelRow({
                 <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>/</span>
                 <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>{channel.failCount || 0}</span>
               </span>
+              {consecutiveFailures > 0 ? (
+                <span className="badge badge-warning" style={{ fontSize: 10 }}>
+                  {consecutiveFailures} consecutive failures
+                </span>
+              ) : null}
+              {cooldownRemaining ? (
+                <span className="badge badge-danger" style={{ fontSize: 10 }}>
+                  cooldown {cooldownRemaining}
+                </span>
+              ) : null}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
@@ -519,6 +531,16 @@ export function SortableChannelRow({
             <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>/</span>
             <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>{channel.failCount || 0}</span>
           </span>
+          {consecutiveFailures > 0 ? (
+            <span className="badge badge-warning" style={{ fontSize: 10 }}>
+              {consecutiveFailures} consecutive failures
+            </span>
+          ) : null}
+          {cooldownRemaining ? (
+            <span className="badge badge-danger" style={{ fontSize: 10 }}>
+              cooldown {cooldownRemaining}
+            </span>
+          ) : null}
         </div>
       </div>
 

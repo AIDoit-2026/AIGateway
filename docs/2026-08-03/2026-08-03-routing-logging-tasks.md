@@ -5,6 +5,8 @@ owner: codex
 status: proposed
 ---
 
+
+- [x] 稳定路由通道状态可观测性：TokenRoutes 通道行显示优先级、连续失败次数和活动冷却剩余时间；新增冷却时间格式化测试。
 # 任务清单
 
 ## A. 现状基线与复现
@@ -29,10 +31,10 @@ status: proposed
 - [x] 在 `accounts.ts` 创建 request correlation ID，并统一封装所有失败返回的结构化日志。
 - [x] 在平台适配器/请求封装层记录 `/api/user/self`、模型列表、余额和 API token 后续请求的阶段、URL、认证形态和耗时。
 - [x] 为 API Key endpoint pool 和 New-API/AnyRouter 诊断变体增加可辨识的阶段名；禁止记录原始 Authorization、Cookie 和 token。
-- [ ] 明确超时后的诊断请求预算，避免诊断本身放大请求量；增加超时和诊断失败测试。
+- [x] 明确超时后的诊断请求预算，避免诊断本身放大请求量；增加超时和诊断失败测试。
 - [x] 更新管理 API/运维文档，说明需要提供的脱敏信息、关联 ID 和采集方式，不要求用户提交明文 token。
 
-进行中：`verify-token` 已为 API Key、Session、空模型和未知凭据失败记录关联 ID、目标与认证形态；Base/New-API 请求封装已记录阶段、URL、认证形态、状态和耗时，并对诊断变体使用独立阶段名；每次诊断最多发起 6 个 2.5 秒请求。超时和诊断专门回归测试仍待补齐。
+已完成：`verify-token` 已为 API Key、Session、空模型和未知凭据失败记录关联 ID、目标与认证形态；Base/New-API 请求封装已记录阶段、URL、认证形态、状态和耗时，并对诊断变体使用独立阶段名；每次诊断最多发起 6 个 2.5 秒请求；新增 adapter 超时后的诊断请求上限回归测试。测试尚未在当前缺少 `vitest` 的环境执行。
 
 ## D. 稳定优先策略
 

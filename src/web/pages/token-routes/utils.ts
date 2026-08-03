@@ -212,6 +212,16 @@ export function getProbabilityColor(probability: number): string {
   return 'var(--color-border)';
 }
 
+export function formatCooldownRemaining(cooldownUntil: string | null | undefined, nowMs = Date.now()): string | null {
+  if (!cooldownUntil) return null;
+  const untilMs = Date.parse(cooldownUntil);
+  if (!Number.isFinite(untilMs) || untilMs <= nowMs) return null;
+  const totalSeconds = Math.max(1, Math.ceil((untilMs - nowMs) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
 export function getChannelDecisionState(
   candidate: RouteDecisionCandidate | undefined,
   channel: RouteChannel,

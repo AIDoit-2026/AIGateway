@@ -160,6 +160,35 @@ describe('accounts verify-token shield detection', () => {
     expect(undiciFetchMock).toHaveBeenCalled();
   });
 
+  it('caps diagnostic self requests after adapter verification fails', async () => {
+    verifyTokenMock.mockRejectedValueOnce(new Error('Token verification timed out'));
+    undiciFetchMock.mockResolvedValue({
+      status: 503,
+      text: async () => 'temporary failure',
+      headers: {
+        get: () => 'application/json',
+      },
+    });
+
+    const site = await db.insert(schema.sites).values({
+      name: 'Diagnostic Budget',
+      url: 'https://diagnostic-budget.example.com',
+      platform: 'new-api',
+    }).returning().get();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/accounts/verify-token',
+      payload: {
+        siteId: site.id,
+        accessToken: 'session-or-cookie-token',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(undiciFetchMock).toHaveBeenCalledTimes(6);
+  });
+
   it('uses adapter platformName to skip raw shield detection for newapi alias site platform', async () => {
     adapterPlatformName = 'new-api';
     verifyTokenMock.mockResolvedValueOnce({ tokenType: 'unknown' });
