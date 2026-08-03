@@ -824,9 +824,9 @@ describe('RouteCard', () => {
       node.type === 'div'
       && node.props['data-testid'] === 'compact-route-action-row'
     ));
-    const strategySelectWrap = compactActionRow.find((node) => (
+    const strategyLabel = compactActionRow.find((node) => (
       node.type === 'div'
-      && node.props['data-testid'] === 'compact-route-strategy-select'
+      && node.props['data-testid'] === 'compact-route-strategy'
     ));
     const addChannelButton = compactActionRow.find((node) => (
       node.type === 'button'
@@ -837,7 +837,8 @@ describe('RouteCard', () => {
     expect(compactActionRow.props.style.justifyContent).toBe('flex-start');
     expect(collectText(compactActionRow)).toContain('路由策略');
     expect(collectText(compactActionRow)).toContain('添加通道');
-    expect(strategySelectWrap.props.style.flex).toBe('0 0 168px');
+    expect(strategyLabel.props.style.flex).toBe('0 0 168px');
+    expect(collectText(strategyLabel)).toContain('稳定优先');
     expect(addChannelButton.props.style.marginLeft).toBe('auto');
   });
 

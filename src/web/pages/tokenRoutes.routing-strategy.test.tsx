@@ -77,7 +77,7 @@ describe('TokenRoutes routing strategy updates', () => {
     vi.clearAllMocks();
   });
 
-  it('keeps the optimistic routing strategy when refresh fails after a successful save', async () => {
+  it('renders stable-first for legacy routes without offering a strategy selector', async () => {
     let root!: WebTestRenderer;
     try {
       await act(async () => {
@@ -100,83 +100,15 @@ describe('TokenRoutes routing strategy updates', () => {
       });
       await flushMicrotasks();
 
-      apiMock.getRoutesSummary.mockRejectedValueOnce(new Error('refresh failed'));
-
-      const roundRobinOption = root.root.find((node) => (
-        node.type === 'button'
-        && typeof node.props.className === 'string'
-        && node.props.className.includes('modern-select-option')
-        && collectText(node).startsWith('轮询')
-      ));
-
-      await act(async () => {
-        roundRobinOption.props.onClick();
-      });
-      await flushMicrotasks();
-
-      expect(apiMock.updateRoute).toHaveBeenCalledWith(1, { routingStrategy: 'round_robin' });
-      expect(apiMock.getRoutesSummary).toHaveBeenCalledTimes(2);
-
-      const strategyTrigger = root.root.find((node) => (
-        node.type === 'button'
-        && typeof node.props.className === 'string'
-        && node.props.className.includes('modern-select-trigger')
-        && collectText(node).includes('轮询')
-      ));
-      expect(collectText(strategyTrigger)).toContain('轮询');
-    } finally {
-      root?.unmount();
-    }
-  });
-
-  it('supports switching to stable_first and keeps the optimistic label when refresh fails', async () => {
-    let root!: WebTestRenderer;
-    try {
-      await act(async () => {
-        root = create(
-          <MemoryRouter initialEntries={['/routes']}>
-            <ToastProvider>
-              <TokenRoutes />
-            </ToastProvider>
-          </MemoryRouter>,
-        );
-      });
-      await flushMicrotasks();
-
-      const expandButton = root.root.find((node) => (
+      const fixedStrategy = root.root.find((node) => (
         node.type === 'div'
-        && String(node.props.className || '').includes('route-card-collapsed')
+        && collectText(node).trim() === '稳定优先'
       ));
-      await act(async () => {
-        expandButton.props.onClick();
-      });
-      await flushMicrotasks();
-
-      apiMock.getRoutesSummary.mockRejectedValueOnce(new Error('refresh failed'));
-
-      const stableFirstOption = root.root.find((node) => (
-        node.type === 'button'
-        && typeof node.props.className === 'string'
-        && node.props.className.includes('modern-select-option')
-        && collectText(node).startsWith('稳定优先')
-      ));
-
-      await act(async () => {
-        stableFirstOption.props.onClick();
-      });
-      await flushMicrotasks();
-
-      expect(apiMock.updateRoute).toHaveBeenCalledWith(1, { routingStrategy: 'stable_first' });
-
-      const strategyTrigger = root.root.find((node) => (
-        node.type === 'button'
-        && typeof node.props.className === 'string'
-        && node.props.className.includes('modern-select-trigger')
-        && collectText(node).startsWith('稳定优先')
-      ));
-      expect(collectText(strategyTrigger)).toContain('稳定优先');
+      expect(collectText(fixedStrategy)).toBe('稳定优先');
+      expect(apiMock.updateRoute).not.toHaveBeenCalled();
     } finally {
       root?.unmount();
     }
   });
+
 });

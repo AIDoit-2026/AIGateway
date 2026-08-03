@@ -44,7 +44,7 @@ status: proposed
 - [ ] 补充选择顺序、连续 N 次失败、M 分钟冷却、冷却跳过、恢复后重新可选、全部冷却和并发请求测试。
 - [ ] 评估 `route_channels.priority` 是否足以表达需求；只有不足时才按数据库三件套新增字段/迁移/生成产物。
 
-进行中：实际选择已按 `priority`、再按 channel ID 确定性排序；TokenRoutes 已固定显示稳定优先，不再提供其它策略选择。旧选择分支的代码删除、冷却可视化和完整回归测试仍待完成。
+进行中：实际选择已按 `priority`、再按 channel ID 确定性排序；TokenRoutes 已固定显示稳定优先，不再提供其它策略选择，并已同步更新对应 UI 测试。旧选择分支的代码删除、冷却可视化和完整回归测试仍待完成；本机缺少 `vitest`，尚未执行更新后的测试。
 
 ## E. 重复响应修复与回归
 
@@ -59,4 +59,4 @@ status: proposed
 - [ ] 运行相关 server/web 单测和集成测试。
 - [ ] 运行 `npm run build`、`git diff --check`。
 - [ ] 运行 `npm run repo:drift-check`，处理架构边界和 schema 产物漂移。
-- [ ] 更新 `docs/operations.md` 或相关运维文档，补充日志字段、脱敏规则、验证失败排查和稳定优先参数说明。
+- [x] 更新 `docs/operations.md` 或相关运维文档，补充日志字段、脱敏规则、验证失败排查和稳定优先参数说明。
