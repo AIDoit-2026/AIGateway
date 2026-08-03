@@ -45,7 +45,7 @@ export function startProxyLogRetentionService(): void {
     try {
       const result = await cleanupExpiredProxyLogs();
       if (!result.enabled || result.deleted <= 0) return;
-      console.info(`[proxy-log-retention] deleted ${result.deleted} logs before ${result.cutoffUtc}`);
+      void result;
     } catch (error) {
       console.warn('[proxy-log-retention] cleanup failed', error);
     }

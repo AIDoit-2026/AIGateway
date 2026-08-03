@@ -21,6 +21,7 @@ import { readRuntimeResponseText } from '../executors/types.js';
 import { selectProxyChannelForAttempt } from '../channelSelection.js';
 import { config } from '../../config.js';
 import { runProxySideEffect } from '../../services/proxySideEffect.js';
+import { logFailedUpstreamRequest } from '../../services/upstreamRequestLog.js';
 
 type SelectedChannel = Awaited<ReturnType<typeof tokenRouter.selectChannel>>;
 type SurfaceWarningScope = 'chat' | 'responses';
@@ -28,7 +29,7 @@ type SurfaceWarningScope = 'chat' | 'responses';
 type SurfaceSelectedChannel = {
   channel: { routeId: number | null; id: number };
   account: { id: number; username?: string | null };
-  site: { name?: string | null };
+  site: { name?: string | null; url?: string | null };
   actualModel?: string | null;
 };
 
@@ -584,6 +585,12 @@ export function createSurfaceFailureToolkit(input: {
       retryCount: number;
     }): Promise<SurfaceFailureOutcome> {
       const rawErrText = args.rawErrText || args.errText;
+      logFailedUpstreamRequest({
+        scope: `proxy/${input.warningScope}`,
+        url: `${args.selected.site.url || args.selected.site.name || 'upstream'}${args.modelName ? `/${args.modelName}` : ''}`,
+        status: args.status,
+        error: new Error(args.errText),
+      });
       await recordFailure('record upstream failure', args.selected, {
         status: args.status,
         errorText: rawErrText,
@@ -651,6 +658,12 @@ export function createSurfaceFailureToolkit(input: {
       totalTokens?: number | null;
       upstreamPath?: string | null;
     }): Promise<SurfaceFailureOutcome> {
+      logFailedUpstreamRequest({
+        scope: `proxy/${input.warningScope}`,
+        url: `${args.selected.site.url || args.selected.site.name || 'upstream'}${args.upstreamPath || ''}`,
+        status: args.failure.status,
+        error: new Error(args.failure.reason),
+      });
       await recordFailure('record detected failure', args.selected, {
         status: args.failure.status,
         errorText: args.failure.reason,
@@ -704,6 +717,11 @@ export function createSurfaceFailureToolkit(input: {
       latencyMs: number;
       retryCount: number;
     }): Promise<SurfaceFailureOutcome> {
+      logFailedUpstreamRequest({
+        scope: `proxy/${input.warningScope}`,
+        url: args.selected.site.url || args.selected.site.name || 'upstream',
+        error: new Error(args.errorMessage || 'network failure'),
+      });
       await recordFailure('record execution error', args.selected, {
         errorText: args.errorMessage,
         modelName: args.modelName,

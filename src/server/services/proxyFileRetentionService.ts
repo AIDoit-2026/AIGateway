@@ -45,7 +45,7 @@ export function startProxyFileRetentionService(): void {
     try {
       const result = await cleanupExpiredProxyFiles();
       if (!result.enabled || result.deleted <= 0) return;
-      console.info(`[proxy-file-retention] deleted ${result.deleted} files before ${result.cutoffUtc}`);
+      void result;
     } catch (error) {
       console.warn('[proxy-file-retention] cleanup failed', error);
     }

@@ -58,12 +58,9 @@ async function resolvePositiveIntegerSetting(settingKey: string, fallback: numbe
 
 function createCheckinTask(cronExpr: string) {
   return cron.schedule(cronExpr, async () => {
-    console.log(`[Scheduler] Running check-in at ${new Date().toISOString()}`);
     try {
       const results = await checkinAll({ scheduleMode: 'cron' });
-      const success = results.filter((r) => r.result.success).length;
-      const failed = results.length - success;
-      console.log(`[Scheduler] Check-in complete: ${success} success, ${failed} failed`);
+      void results;
     } catch (err) {
       console.error('[Scheduler] Check-in error:', err);
     }
@@ -130,9 +127,7 @@ async function runIntervalCheckinPass(now = new Date()) {
     for (const item of results) {
       intervalAttemptByAccount.set(item.accountId, nowMs);
     }
-    const success = results.filter((r) => r.result.success).length;
-    const failed = results.length - success;
-    console.log(`[Scheduler] Interval check-in complete: ${success} success, ${failed} failed`);
+    void results;
   } catch (err) {
     console.error('[Scheduler] Interval check-in error:', err);
   }
@@ -160,11 +155,9 @@ function startCheckinSchedule() {
 
 function createBalanceTask(cronExpr: string) {
   return cron.schedule(cronExpr, async () => {
-    console.log(`[Scheduler] Refreshing balances at ${new Date().toISOString()}`);
     try {
       await refreshAllBalances();
       await routeRefreshWorkflow.refreshModelsAndRebuildRoutes();
-      console.log('[Scheduler] Balance refresh complete');
     } catch (err) {
       console.error('[Scheduler] Balance refresh error:', err);
     }
@@ -173,7 +166,6 @@ function createBalanceTask(cronExpr: string) {
 
 function createDailySummaryTask(cronExpr: string) {
   return cron.schedule(cronExpr, async () => {
-    console.log(`[Scheduler] Sending daily summary at ${new Date().toISOString()}`);
     try {
       const metrics = await collectDailySummaryMetrics();
       const { title, message } = buildDailySummaryNotification(metrics);
@@ -182,7 +174,6 @@ function createDailySummaryTask(cronExpr: string) {
         requireChannel: true,
         throwOnFailure: true,
       });
-      console.log(`[Scheduler] Daily summary sent: ${title}`);
     } catch (err) {
       console.error('[Scheduler] Daily summary error:', err);
     }
@@ -192,19 +183,14 @@ function createDailySummaryTask(cronExpr: string) {
 function createLogCleanupTask(cronExpr: string) {
   return cron.schedule(cronExpr, async () => {
     if (!config.logCleanupConfigured) {
-      console.log('[Scheduler] Log cleanup skipped: legacy fallback mode is active');
       return;
     }
-    console.log(`[Scheduler] Running log cleanup at ${new Date().toISOString()}`);
     try {
       const result = await cleanupConfiguredLogs();
       if (!result.enabled) {
-        console.log('[Scheduler] Log cleanup skipped: no log target enabled');
         return;
       }
-      console.log(
-        `[Scheduler] Log cleanup complete: usage=${result.usageLogsDeleted}, program=${result.programLogsDeleted}, cutoff=${result.cutoffUtc}`,
-      );
+      void result;
     } catch (err) {
       console.error('[Scheduler] Log cleanup error:', err);
     }
@@ -255,12 +241,6 @@ export async function startScheduler() {
   dailySummaryTask = createDailySummaryTask(activeDailySummaryCron);
   logCleanupTask = createLogCleanupTask(activeLogCleanupCron);
 
-  console.log(`[Scheduler] Check-in schedule: ${config.checkinScheduleMode} (${config.checkinScheduleMode === 'cron' ? activeCheckinCron : `${config.checkinIntervalHours}h`})`);
-  console.log(`[Scheduler] Balance refresh cron: ${activeBalanceCron}`);
-  console.log(`[Scheduler] Daily summary cron: ${activeDailySummaryCron}`);
-  console.log(
-    `[Scheduler] Log cleanup cron: ${activeLogCleanupCron} (configured=${config.logCleanupConfigured}, usage=${activeLogCleanupUsageLogsEnabled}, program=${activeLogCleanupProgramLogsEnabled}, retentionDays=${activeLogCleanupRetentionDays})`,
-  );
 }
 
 export function updateCheckinCron(cronExpr: string) {
