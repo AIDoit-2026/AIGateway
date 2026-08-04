@@ -2227,7 +2227,7 @@
         "routing_strategy": {
           "logicalType": "text",
           "notNull": false,
-          "defaultValue": "'weighted'",
+          "defaultValue": "'stable_first'",
           "primaryKey": false
         },
         "route_mode": {

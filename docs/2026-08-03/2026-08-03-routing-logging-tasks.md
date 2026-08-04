@@ -12,6 +12,9 @@ status: proposed
 - [x] 数据库兼容默认值收敛：新旧数据库的 `routing_strategy` 默认值和启动归一化统一为 `stable_first`。
 - [x] Dispatch 选择路径收敛：删除实际转发路径中的 round-robin 与 weighted fallback，仅按 priority 和 channel ID 稳定选择。
 - [x] 路由诊断策略标识统一：`explainSelection()` 始终报告稳定优先，并统一将最近失败通道标记为避让对象。
+- [x] Schema 默认值收敛：Drizzle schema、schema contract 和 MySQL/Postgres bootstrap 产物中的 `routing_strategy` 默认值统一为 `stable_first`。
+- [x] 路由级 legacy helper 清理：移除 tokenRouter 中未调用的 weighted 随机选择与 round-robin 通道选择 helper，保留 OAuth route-unit 内部成员排序策略。
+- [x] 稳定优先冷却回归补充：新增配置化 N 次失败、M 分钟冷却、冷却跳过和恢复后重新可用的 tokenRouter 选择测试。
 # 任务清单
 
 ## A. 现状基线与复现
@@ -44,14 +47,14 @@ status: proposed
 ## D. 稳定优先策略
 
 - [x] 将 `src/server/services/routeRoutingStrategy.ts`、token route contracts、导入导出和 API 更新逻辑收敛为 `stable_first`。
-- [ ] 在 `tokenRouter.ts` 删除 weighted/round-robin 选择分支，使用 priority + 稳定 tie-breaker 的顺序选择，并复用现有失败/冷却记录。
+- [x] 在 `tokenRouter.ts` 删除 weighted/round-robin 选择分支，使用 priority + 稳定 tie-breaker 的顺序选择，并复用现有失败/冷却记录。
 - [x] 增加 `tokenRouterFailureThreshold` 和 `tokenRouterFailureCooldownMinutes` 的配置解析、默认值、上下限和运行时设置 API/UI 字段。
-- [ ] 处理历史策略值：读取归一化、数据库迁移/启动兼容和备份导入导出均转换为 stable-first；确认不破坏旧备份。
-- [ ] 更新 TokenRoutes UI、类型、文案和相关测试，移除其它策略选项并展示优先序号、失败次数和冷却剩余时间。
+- [x] 处理历史策略值：读取归一化、数据库迁移/启动兼容和备份导入导出均转换为 stable-first；确认不破坏旧备份。
+- [x] 更新 TokenRoutes UI、类型、文案和相关测试，移除其它策略选项并展示优先序号、失败次数和冷却剩余时间。
 - [ ] 补充选择顺序、连续 N 次失败、M 分钟冷却、冷却跳过、恢复后重新可选、全部冷却和并发请求测试。
-- [ ] 评估 `route_channels.priority` 是否足以表达需求；只有不足时才按数据库三件套新增字段/迁移/生成产物。
+- [x] 评估 `route_channels.priority` 是否足以表达需求；只有不足时才按数据库三件套新增字段/迁移/生成产物。
 
-进行中：实际选择已按 `priority`、再按 channel ID 确定性排序；TokenRoutes 已固定显示稳定优先，不再提供其它策略选择，并已同步更新对应 UI 测试。旧选择分支的代码删除、冷却可视化和完整回归测试仍待完成；本机缺少 `vitest`，尚未执行更新后的测试。
+进行中：实际选择和诊断路径均已收敛为稳定优先；路由级 round-robin/weighted helper 已删除；历史策略读取、启动兼容、备份导入和 schema 默认值均已统一为 `stable_first`。`route_channels.priority` 已能表达“路由配置序号”，配合现有失败计数和冷却字段即可覆盖需求，无需新增数据库字段。已补 N/M 冷却和恢复可用回归；完整并发与全不可用矩阵仍待补齐。本机缺少 `vitest`，尚未执行更新后的测试。
 
 ## E. 重复响应修复与回归
 

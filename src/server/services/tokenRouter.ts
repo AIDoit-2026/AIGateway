@@ -9,10 +9,6 @@ import {
 import { getCachedModelRoutingReferenceCost, refreshModelPricingCatalog } from './modelPricingService.js';
 import { proxyChannelCoordinator, type ProxyChannelLoadSnapshot } from './proxyChannelCoordinator.js';
 import { RETRYABLE_TIMEOUT_PATTERNS } from './proxyRetryPolicy.js';
-import {
-  normalizeRouteRoutingStrategy,
-  type RouteRoutingStrategy,
-} from './routeRoutingStrategy.js';
 import { type DownstreamRoutingPolicy, EMPTY_DOWNSTREAM_ROUTING_POLICY } from './downstreamPolicyTypes.js';
 import { isUsableAccountToken } from './accountTokenService.js';
 import { getOauthInfoFromAccount } from './oauth/oauthAccount.js';
@@ -93,7 +89,7 @@ type SiteRuntimeHealthState = {
 
 const FAILURE_BACKOFF_BASE_SEC = 15;
 const SHORT_WINDOW_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
-// Keep weighted-route backoff within the JavaScript Date range when fail counts grow large.
+// Keep route failure backoff within the JavaScript Date range when fail counts grow large.
 const MAX_FAILURE_BACKOFF_SEC = 30 * 24 * 60 * 60;
 const MIN_EFFECTIVE_UNIT_COST = 1e-6;
 const STABLE_FIRST_SITE_SCORE_RATIO = 0.92;
@@ -203,8 +199,7 @@ type SiteRuntimeHealthDetails = {
   recentConfidence: number;
 };
 
-type WeightedSelectionMode = 'weighted' | 'stable_first';
-type WeightedSelectionResult = {
+type StableFirstSelectionResult = {
   selected: RouteChannelCandidate | null;
   details: Array<{ candidate: RouteChannelCandidate; probability: number; reason: string }>;
   stableSiteCount: number;
@@ -1507,10 +1502,6 @@ function resolveActualModelForSelectedChannel(
   return mappedModel;
 }
 
-function resolveRouteStrategy(route: RouteRow): RouteRoutingStrategy {
-  return normalizeRouteRoutingStrategy(route.routingStrategy);
-}
-
 function parseIsoTimeMs(value?: string | null): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -2051,80 +2042,8 @@ export class TokenRouter {
       };
     }
 
-    if (routeStrategy === 'round_robin') {
-      const rawOrdered = this.getRoundRobinCandidates(available);
-      const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(rawOrdered, runtimeModelResolver, nowMs);
-      if (breakerFiltered.avoided.length > 0) {
-        for (const item of breakerFiltered.avoided) {
-          const target = candidateMap.get(item.candidate.channel.id);
-          if (!target) continue;
-          target.reason = item.reason;
-        }
-        const breakerSummaryLabel = breakerFiltered.avoided.some((item) => item.reason.includes('模型熔断'))
-          ? '运行时熔断避让'
-          : '站点熔断避让';
-        summary.push(`${breakerSummaryLabel} ${breakerFiltered.avoided.length}`);
-      }
-      const ordered = breakerFiltered.candidates;
-      let selected: RouteChannelCandidate | null = null;
-
-      for (let index = 0; index < ordered.length; index += 1) {
-        const target = candidateMap.get(ordered[index].channel.id);
-        if (!target || !target.eligible) continue;
-        target.probability = index === 0 ? 100 : 0;
-        target.reason = index === 0
-          ? `轮询命中（全局第 1 / ${ordered.length} 位，忽略优先级）`
-          : `轮询排队中（全局第 ${index + 1} / ${ordered.length} 位，忽略优先级）`;
-        if (index === 0) {
-          selected = ordered[index];
-        }
-      }
-
-      if (!selected) {
-        summary.push('本次未选出通道');
-        return {
-          requestedModel,
-          actualModel: mappedModel,
-          matched: true,
-          routeId: match.route.id,
-          modelPattern: match.route.modelPattern,
-          summary,
-          candidates,
-        };
-      }
-
-      const selectedChannel = candidateMap.get(selected.channel.id);
-      const selectedLabel = selectedChannel
-        ? `${selectedChannel.username} @ ${selectedChannel.siteName} / ${selectedChannel.tokenName}`
-        : `channel-${selected.channel.id}`;
-      const actualModel = resolveActualModelForSelectedChannel(
-        requestedModel,
-        match.route,
-        mappedModel,
-        selected.channel.sourceModel,
-      );
-      summary.push(`全局轮询：可用 ${ordered.length}，忽略优先级`);
-      summary.push(`最终选择：${selectedLabel}`);
-      if (actualModel !== mappedModel) {
-        summary.push(`实际转发模型：${actualModel}`);
-      }
-
-      return {
-        requestedModel,
-        actualModel,
-        matched: true,
-        routeId: match.route.id,
-        modelPattern: match.route.modelPattern,
-        selectedChannelId: selected.channel.id,
-        selectedAccountId: selected.account.id,
-        selectedLabel,
-        summary,
-        candidates,
-      };
-    }
-
-    if (routeStrategy === 'stable_first') {
-      const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
+    const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
+    {
       if (breakerFiltered.avoided.length > 0) {
         for (const item of breakerFiltered.avoided) {
           const target = candidateMap.get(item.candidate.channel.id);
@@ -2165,21 +2084,17 @@ export class TokenRouter {
         && poolPlan.observationCandidates.length > 0
         && remainingPrimaryRequestsBeforeObservation === 0
         && !observationDueNow;
-      const primaryWeighted = this.calculateWeightedSelection(
+      const primarySelection = this.calculateStableFirstSelection(
         poolPlan.primaryCandidates,
         useChannelSourceModelForCost ? runtimeModelResolver : mappedModel,
-        downstreamPolicy,
         nowMs,
-        'stable_first',
         rotationKey,
       );
-      const observationWeighted = poolPlan.observationCandidates.length > 0
-        ? this.calculateWeightedSelection(
+      const observationSelection = poolPlan.observationCandidates.length > 0
+        ? this.calculateStableFirstSelection(
           poolPlan.observationCandidates,
           useChannelSourceModelForCost ? runtimeModelResolver : mappedModel,
-          downstreamPolicy,
           nowMs,
-          'stable_first',
           `${rotationKey}:observe`,
         )
         : {
@@ -2188,7 +2103,7 @@ export class TokenRouter {
           stableSiteCount: 0,
         };
 
-      for (const detail of primaryWeighted.details) {
+      for (const detail of primarySelection.details) {
         const target = candidateMap.get(detail.candidate.channel.id);
         if (!target) continue;
         target.probability = Number((detail.probability * (useObservationNow ? 0 : 100)).toFixed(2));
@@ -2198,7 +2113,7 @@ export class TokenRouter {
             : `主池：${detail.reason}`;
         }
       }
-      for (const detail of observationWeighted.details) {
+      for (const detail of observationSelection.details) {
         const target = candidateMap.get(detail.candidate.channel.id);
         if (!target) continue;
         target.probability = Number((detail.probability * (useObservationNow ? 100 : 0)).toFixed(2));
@@ -2217,10 +2132,10 @@ export class TokenRouter {
         }
       }
 
-      const weighted = useObservationNow
-        ? observationWeighted
-        : (primaryWeighted.selected ? primaryWeighted : observationWeighted);
-      if (!weighted.selected) {
+      const selection = useObservationNow
+        ? observationSelection
+        : (primarySelection.selected ? primarySelection : observationSelection);
+      if (!selection.selected) {
         summary.push('本次未选出通道');
         return {
           requestedModel,
@@ -2263,17 +2178,17 @@ export class TokenRouter {
       }
       summary.push(summaryParts.join('，'));
 
-      const selectedChannel = candidateMap.get(weighted.selected.channel.id);
+      const selectedChannel = candidateMap.get(selection.selected.channel.id);
       const selectedLabel = selectedChannel
         ? `${selectedChannel.username} @ ${selectedChannel.siteName} / ${selectedChannel.tokenName}`
-        : `channel-${weighted.selected.channel.id}`;
+        : `channel-${selection.selected.channel.id}`;
       const actualModel = resolveActualModelForSelectedChannel(
         requestedModel,
         match.route,
         mappedModel,
-        weighted.selected.channel.sourceModel,
+        selection.selected.channel.sourceModel,
       );
-      summary.push(`最终选择：${selectedLabel}（P${weighted.selected.channel.priority ?? 0}）`);
+      summary.push(`最终选择：${selectedLabel}（P${selection.selected.channel.priority ?? 0}）`);
       if (actualModel !== mappedModel) {
         summary.push(`实际转发模型：${actualModel}`);
       }
@@ -2284,122 +2199,13 @@ export class TokenRouter {
         matched: true,
         routeId: match.route.id,
         modelPattern: match.route.modelPattern,
-        selectedChannelId: weighted.selected.channel.id,
-        selectedAccountId: weighted.selected.account.id,
+        selectedChannelId: selection.selected.channel.id,
+        selectedAccountId: selection.selected.account.id,
         selectedLabel,
         summary,
         candidates,
       };
     }
-
-    const availableByPriority = new Map<number, RouteChannelCandidate[]>();
-    for (const row of available) {
-      const priority = row.channel.priority ?? 0;
-      if (!availableByPriority.has(priority)) availableByPriority.set(priority, []);
-      availableByPriority.get(priority)!.push(row);
-    }
-
-    const sortedPriorities = Array.from(availableByPriority.keys()).sort((a, b) => a - b);
-    let selected: RouteChannelCandidate | null = null;
-    let selectedPriority = 0;
-
-    for (const priority of sortedPriorities) {
-      const rawLayer = availableByPriority.get(priority) ?? [];
-      if (rawLayer.length === 0) continue;
-
-      const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(rawLayer, runtimeModelResolver, nowMs);
-      if (breakerFiltered.avoided.length > 0) {
-        for (const item of breakerFiltered.avoided) {
-          const target = candidateMap.get(item.candidate.channel.id);
-          if (!target) continue;
-          target.reason = item.reason;
-        }
-      }
-
-      const filteredLayer = filterRecentlyFailedCandidates(breakerFiltered.candidates, nowMs);
-      const avoided = breakerFiltered.candidates.filter((row) => !filteredLayer.some((item) => item.channel.id === row.channel.id));
-      if (avoided.length > 0) {
-        for (const row of avoided) {
-          const target = candidateMap.get(row.channel.id);
-          if (!target) continue;
-          target.avoidedByRecentFailure = true;
-          target.reason = `最近失败，优先避让（${resolveFailureBackoffSec(row.channel.failCount)} 秒窗口）`;
-        }
-      }
-
-      const weighted = this.calculateWeightedSelection(
-        filteredLayer,
-        useChannelSourceModelForCost ? runtimeModelResolver : mappedModel,
-        downstreamPolicy,
-        nowMs,
-        'weighted',
-      );
-      for (const detail of weighted.details) {
-        const target = candidateMap.get(detail.candidate.channel.id);
-        if (!target) continue;
-        target.probability = Number((detail.probability * 100).toFixed(2));
-        if (target.eligible && !target.avoidedByRecentFailure) {
-          target.reason = detail.reason;
-        }
-      }
-
-      if (!weighted.selected) continue;
-      selected = weighted.selected;
-      selectedPriority = priority;
-      const layerSummaryParts = [`优先级 P${priority}：可用 ${rawLayer.length}`];
-      if (breakerFiltered.avoided.length > 0) {
-        const breakerSummaryLabel = breakerFiltered.avoided.some((item) => item.reason.includes('模型熔断'))
-          ? '运行时熔断避让'
-          : '站点熔断避让';
-        layerSummaryParts.push(`${breakerSummaryLabel} ${breakerFiltered.avoided.length}`);
-      }
-      if (avoided.length > 0) {
-        layerSummaryParts.push(`最近失败避让 ${avoided.length}`);
-      }
-      summary.push(layerSummaryParts.join('，'));
-      break;
-    }
-
-    if (!selected) {
-      summary.push('本次未选出通道');
-      return {
-        requestedModel,
-        actualModel: mappedModel,
-        matched: true,
-        routeId: match.route.id,
-        modelPattern: match.route.modelPattern,
-        summary,
-        candidates,
-      };
-    }
-
-    const selectedChannel = candidateMap.get(selected.channel.id);
-    const selectedLabel = selectedChannel
-      ? `${selectedChannel.username} @ ${selectedChannel.siteName} / ${selectedChannel.tokenName}`
-      : `channel-${selected.channel.id}`;
-    const actualModel = resolveActualModelForSelectedChannel(
-      requestedModel,
-      match.route,
-      mappedModel,
-      selected.channel.sourceModel,
-    );
-    summary.push(`最终选择：${selectedLabel}（P${selectedPriority}）`);
-    if (actualModel !== mappedModel) {
-      summary.push(`实际转发模型：${actualModel}`);
-    }
-
-    return {
-      requestedModel,
-      actualModel,
-      matched: true,
-      routeId: match.route.id,
-      modelPattern: match.route.modelPattern,
-      selectedChannelId: selected.channel.id,
-      selectedAccountId: selected.account.id,
-      selectedLabel,
-      summary,
-      candidates,
-    };
   }
 
   private async refreshPricingReferenceCostsForMatch(
@@ -2874,7 +2680,6 @@ export class TokenRouter {
     const mappedModel = resolveMappedModel(requestedModel, match.route.modelMapping);
     const requestedByDisplayName = isRouteDisplayNameMatch(requestedModel, match.route.displayName);
     const bypassSourceModelCheck = requestedByDisplayName;
-    const routeStrategy = resolveRouteStrategy(match.route);
     const runtimeModelResolver = requestedByDisplayName
       ? ((candidate: RouteChannelCandidate) => normalizeChannelSourceModel(candidate.channel.sourceModel) || mappedModel)
       : mappedModel;
@@ -2899,7 +2704,7 @@ export class TokenRouter {
 
     const selected = breakerFiltered.candidates.find((candidate) => candidate.channel.id === preferredChannelId);
     if (!selected) return null;
-    if (!isOauthRouteUnitCandidate(selected) && routeStrategy !== 'round_robin' && isChannelRecentlyFailed(selected.channel, nowMs)) {
+    if (!isOauthRouteUnitCandidate(selected) && isChannelRecentlyFailed(selected.channel, nowMs)) {
       return null;
     }
     return await this.finalizeSelectedCandidateForDispatch(
@@ -2908,11 +2713,11 @@ export class TokenRouter {
       requestedModel,
       mappedModel,
       downstreamPolicy,
-      recordSelection && (routeStrategy === 'round_robin' || routeStrategy === 'stable_first'),
+      recordSelection,
       nowIso,
       nowMs,
-      routeStrategy === 'stable_first' ? this.buildStableFirstRotationKey(match.route.id, requestedModel) : undefined,
-      routeStrategy === 'stable_first' ? `${this.buildStableFirstRotationKey(match.route.id, requestedModel)}:observe` : undefined,
+      this.buildStableFirstRotationKey(match.route.id, requestedModel),
+      `${this.buildStableFirstRotationKey(match.route.id, requestedModel)}:observe`,
       false,
       excludeChannelIds,
     );
@@ -3268,25 +3073,6 @@ export class TokenRouter {
     return reasonParts;
   }
 
-  private getRoundRobinCandidates(candidates: RouteChannelCandidate[]): RouteChannelCandidate[] {
-    return [...candidates].sort((left, right) => {
-      const selectionOrder = compareNullableTimeAsc(
-        left.channel.lastSelectedAt || left.channel.lastUsedAt,
-        right.channel.lastSelectedAt || right.channel.lastUsedAt,
-      );
-      if (selectionOrder !== 0) return selectionOrder;
-
-      const usedOrder = compareNullableTimeAsc(left.channel.lastUsedAt, right.channel.lastUsedAt);
-      if (usedOrder !== 0) return usedOrder;
-
-      return (left.channel.id ?? 0) - (right.channel.id ?? 0);
-    });
-  }
-
-  private selectRoundRobinCandidate(candidates: RouteChannelCandidate[]): RouteChannelCandidate | null {
-    return this.getRoundRobinCandidates(candidates)[0] ?? null;
-  }
-
   private compareStableFirstCandidates(left: RouteChannelCandidate, right: RouteChannelCandidate): number {
     return compareStableFirstCandidateOrder(left, right);
   }
@@ -3399,40 +3185,12 @@ export class TokenRouter {
     };
   }
 
-  private weightedRandomSelect(
+  private calculateStableFirstSelection(
     candidates: RouteChannelCandidate[],
     modelName: string | ((candidate: RouteChannelCandidate) => string),
-    downstreamPolicy: DownstreamRoutingPolicy,
-    nowMs = Date.now(),
-  ) {
-    return this.calculateWeightedSelection(candidates, modelName, downstreamPolicy, nowMs, 'weighted').selected;
-  }
-
-  private stableFirstSelect(
-    candidates: RouteChannelCandidate[],
-    modelName: string | ((candidate: RouteChannelCandidate) => string),
-    downstreamPolicy: DownstreamRoutingPolicy,
     nowMs = Date.now(),
     stableFirstRotationKey?: string,
-  ) {
-    return this.calculateWeightedSelection(
-      candidates,
-      modelName,
-      downstreamPolicy,
-      nowMs,
-      'stable_first',
-      stableFirstRotationKey,
-    ).selected;
-  }
-
-  private calculateWeightedSelection(
-    candidates: RouteChannelCandidate[],
-    modelName: string | ((candidate: RouteChannelCandidate) => string),
-    downstreamPolicy: DownstreamRoutingPolicy,
-    nowMs = Date.now(),
-    selectionMode: WeightedSelectionMode = 'weighted',
-    stableFirstRotationKey?: string,
-  ): WeightedSelectionResult {
+  ): StableFirstSelectionResult {
     if (candidates.length === 0) {
       return {
         selected: null as RouteChannelCandidate | null,
@@ -3441,7 +3199,6 @@ export class TokenRouter {
       };
     }
 
-    const { baseWeightFactor, valueScoreFactor, costWeight, balanceWeight, usageWeight } = config.routingWeights;
     const resolveModelName = typeof modelName === 'function'
       ? modelName
       : (() => modelName);
@@ -3457,24 +3214,6 @@ export class TokenRouter {
       })
     ));
 
-    const valueScores = candidates.map((c, i) => {
-      const unitCost = effectiveCosts[i]?.unitCost || 1;
-      const balance = c.account.balance || 0;
-      const totalUsed = (c.channel.successCount ?? 0) + (c.channel.failCount ?? 0);
-      const recentUsage = Math.max(totalUsed, 1);
-      return costWeight * (1 / unitCost) + balanceWeight * balance + usageWeight * (1 / recentUsage);
-    });
-
-    const maxVS = Math.max(...valueScores, 0.001);
-    const minVS = Math.min(...valueScores, 0);
-    const range = maxVS - minVS || 1;
-    const normalizedVS = valueScores.map((v) => (v - minVS) / range);
-
-    const baseContributions = candidates.map((c, i) => {
-      const weight = c.channel.weight ?? 10;
-      return (weight + 10) * (baseWeightFactor + normalizedVS[i] * valueScoreFactor);
-    });
-
     // Avoid over-favoring a site that has many tokens/channels for the same route.
     // Site-level total contribution remains comparable, then split across its channels.
     const siteChannelCounts = new Map<number, number>();
@@ -3487,43 +3226,14 @@ export class TokenRouter {
       const siteChannels = Math.max(1, siteChannelCounts.get(candidate.site.id) || 1);
       const runtimeMultiplier = runtimeHealthDetails[i]?.combinedMultiplier ?? 1;
       const runtimeLoadMultiplier = resolveChannelRuntimeLoadMultiplier(channelLoadSnapshots[i]);
-      if (selectionMode === 'stable_first') {
-        const recentSuccessRate = resolveStableFirstSuccessRate(
-          runtimeHealthDetails[i],
-          siteHistoricalHealthMetrics.get(candidate.site.id)?.successRate,
-        );
-        let contribution = Math.max(1e-4, recentSuccessRate ** 2);
-        contribution *= runtimeMultiplier;
-        contribution *= runtimeLoadMultiplier;
-        return contribution / siteChannels;
-      }
-
-      let contribution = baseContributions[i] / siteChannels;
-      const downstreamSiteMultiplier = downstreamPolicy.siteWeightMultipliers[candidate.site.id] ?? 1;
-      const normalizedDownstreamSiteMultiplier =
-        (Number.isFinite(downstreamSiteMultiplier) && downstreamSiteMultiplier > 0)
-          ? downstreamSiteMultiplier
-          : 1;
-      const siteGlobalWeight =
-        (Number.isFinite(candidate.site.globalWeight) && (candidate.site.globalWeight || 0) > 0)
-          ? (candidate.site.globalWeight as number)
-          : 1;
-      const combinedSiteWeight = siteGlobalWeight * normalizedDownstreamSiteMultiplier;
-      if (combinedSiteWeight > 0 && Number.isFinite(combinedSiteWeight)) {
-        contribution *= combinedSiteWeight;
-      }
-
+      const recentSuccessRate = resolveStableFirstSuccessRate(
+        runtimeHealthDetails[i],
+        siteHistoricalHealthMetrics.get(candidate.site.id)?.successRate,
+      );
+      let contribution = Math.max(1e-4, recentSuccessRate ** 2);
       contribution *= runtimeMultiplier;
-      contribution *= siteHistoricalHealthMetrics.get(candidate.site.id)?.multiplier ?? 1;
       contribution *= runtimeLoadMultiplier;
-
-      // If upstream price is unknown and we are using fallback unit cost,
-      // apply an explicit penalty so raising fallback cost meaningfully lowers probability.
-      if (effectiveCosts[i]?.source === 'fallback') {
-        contribution *= 1 / Math.max(1, effectiveCosts[i]?.unitCost || 1);
-      }
-
-      return contribution;
+      return contribution / siteChannels;
     });
 
     const totalContribution = contributions.reduce((a, b) => a + b, 0);
@@ -3539,37 +3249,20 @@ export class TokenRouter {
     rankedIndices.forEach((candidateIndex, rank) => {
       rankByIndex.set(candidateIndex, rank + 1);
     });
-    const stableSiteLeaderIndices = selectionMode === 'stable_first'
-      ? this.getStableFirstSiteLeaderIndices(candidates, contributions, rankedIndices)
-      : [];
+    const stableSiteLeaderIndices = this.getStableFirstSiteLeaderIndices(candidates, contributions, rankedIndices);
     const stableSiteIds = new Set(stableSiteLeaderIndices.map((index) => candidates[index]?.site.id).filter((siteId) => typeof siteId === 'number'));
     const details = candidates.map((candidate, i) => {
       const probability = totalContribution > 0 ? contributions[i] / totalContribution : 0;
-      const weight = candidate.channel.weight ?? 10;
       const cost = effectiveCosts[i];
       const costSourceText = cost?.source === 'observed'
         ? '实测'
         : (cost?.source === 'configured' ? '配置' : (cost?.source === 'catalog' ? '目录' : '默认'));
       const siteChannels = Math.max(1, siteChannelCounts.get(candidate.site.id) || 1);
-      const downstreamSiteMultiplier = downstreamPolicy.siteWeightMultipliers[candidate.site.id] ?? 1;
-      const normalizedDownstreamSiteMultiplier =
-        (Number.isFinite(downstreamSiteMultiplier) && downstreamSiteMultiplier > 0)
-          ? downstreamSiteMultiplier
-          : 1;
-      const siteGlobalWeight =
-        (Number.isFinite(candidate.site.globalWeight) && (candidate.site.globalWeight || 0) > 0)
-          ? (candidate.site.globalWeight as number)
-          : 1;
-      const combinedSiteWeight = siteGlobalWeight * normalizedDownstreamSiteMultiplier;
       const siteRuntimeDetail = runtimeHealthDetails[i];
       const siteHistoricalHealth = siteHistoricalHealthMetrics.get(candidate.site.id);
-      const siteHistoricalMultiplier = siteHistoricalHealth?.multiplier ?? 1;
       const historicalSuccessRateText = siteHistoricalHealth?.successRate == null
         ? '—'
         : `${(siteHistoricalHealth.successRate * 100).toFixed(1)}%`;
-      const historicalLatencyText = siteHistoricalHealth?.avgLatencyMs == null
-        ? '—'
-        : `${siteHistoricalHealth.avgLatencyMs}ms`;
       const channelRuntimeLoad = channelLoadSnapshots[i];
       const runtimeHealthText = siteRuntimeDetail.modelKey
         ? `${siteRuntimeDetail.combinedMultiplier.toFixed(2)}（站点=${siteRuntimeDetail.globalMultiplier.toFixed(2)}，模型=${siteRuntimeDetail.modelMultiplier.toFixed(2)}）`
@@ -3579,52 +3272,24 @@ export class TokenRouter {
       const stableFirstSuccessRate = resolveStableFirstSuccessRate(siteRuntimeDetail, siteHistoricalHealth?.successRate);
       const stableFirstSuccessRateText = `${(stableFirstSuccessRate * 100).toFixed(1)}%`;
       const stableSiteOrder = this.getStableFirstSiteOrder(candidates, candidate.site.id);
-      const reasonPrefix = selectionMode === 'stable_first'
-        ? (
-          candidates.length === 1
-            ? '稳定优先（唯一可用候选'
-            : `稳定优先（综合评分第 ${rankByIndex.get(i) ?? 1} / ${candidates.length}`
-        )
-        : (
-          candidates.length === 1
-            ? '按权重随机（唯一可用候选'
-            : '按权重随机'
-        );
-      const stablePoolText = selectionMode === 'stable_first'
-        ? `，轮询顺位=P${stableSiteOrder}`
-        : '';
+      const reasonPrefix = candidates.length === 1
+        ? '稳定优先（唯一可用候选'
+        : `稳定优先（综合评分第 ${rankByIndex.get(i) ?? 1} / ${candidates.length}`;
+      const stablePoolText = `，轮询顺位=P${stableSiteOrder}`;
       return {
         candidate,
         probability,
-        reason: selectionMode === 'stable_first'
-          ? `${reasonPrefix}，近期成功率=${recentSuccessRateText}（样本=${siteRuntimeDetail.recentSampleCount.toFixed(2)}，置信=${siteRuntimeDetail.recentConfidence.toFixed(2)}），回退成功率=${historicalSuccessRateText}，综合近期成功率=${stableFirstSuccessRateText}，运行时健康=${runtimeHealthText}，会话负载=${runtimeLoadText}，同站点通道=${siteChannels}${stablePoolText}，评分占比≈${(probability * 100).toFixed(1)}%）`
-          : (
-            candidates.length === 1
-              ? `${reasonPrefix}，W=${weight}，成本=${costSourceText}:${(cost?.unitCost || 1).toFixed(6)}，站点权重=${siteGlobalWeight.toFixed(2)}x下游倍率=${normalizedDownstreamSiteMultiplier.toFixed(2)}=${combinedSiteWeight.toFixed(2)}，运行时健康=${runtimeHealthText}，会话负载=${runtimeLoadText}，历史健康=${siteHistoricalMultiplier.toFixed(2)}（成功率=${historicalSuccessRateText}，均延迟=${historicalLatencyText}，样本=${siteHistoricalHealth?.totalCalls ?? 0}），同站点通道=${siteChannels}，概率≈${(probability * 100).toFixed(1)}%）`
-              : `按权重随机（W=${weight}，成本=${costSourceText}:${(cost?.unitCost || 1).toFixed(6)}，站点权重=${siteGlobalWeight.toFixed(2)}x下游倍率=${normalizedDownstreamSiteMultiplier.toFixed(2)}=${combinedSiteWeight.toFixed(2)}，运行时健康=${runtimeHealthText}，会话负载=${runtimeLoadText}，历史健康=${siteHistoricalMultiplier.toFixed(2)}（成功率=${historicalSuccessRateText}，均延迟=${historicalLatencyText}，样本=${siteHistoricalHealth?.totalCalls ?? 0}），同站点通道=${siteChannels}，概率≈${(probability * 100).toFixed(1)}%）`
-          ),
+        reason: `${reasonPrefix}，成本参考=${costSourceText}:${(cost?.unitCost || 1).toFixed(6)}，近期成功率=${recentSuccessRateText}（样本=${siteRuntimeDetail.recentSampleCount.toFixed(2)}，置信=${siteRuntimeDetail.recentConfidence.toFixed(2)}），回退成功率=${historicalSuccessRateText}，综合近期成功率=${stableFirstSuccessRateText}，运行时健康=${runtimeHealthText}，会话负载=${runtimeLoadText}，同站点通道=${siteChannels}${stablePoolText}，评分占比≈${(probability * 100).toFixed(1)}%）`,
       };
     });
 
     let selected = candidates[rankedIndices[0] ?? 0];
-    if (selectionMode === 'weighted') {
-      let rand = Math.random() * totalContribution;
-      selected = candidates[candidates.length - 1];
-      for (let i = 0; i < candidates.length; i++) {
-        rand -= contributions[i];
-        if (rand <= 0) {
-          selected = candidates[i];
-          break;
-        }
-      }
-    } else {
-      selected = this.selectStableFirstCandidate(
-        candidates,
-        contributions,
-        rankedIndices,
-        stableFirstRotationKey,
-      ) ?? selected;
-    }
+    selected = this.selectStableFirstCandidate(
+      candidates,
+      contributions,
+      rankedIndices,
+      stableFirstRotationKey,
+    ) ?? selected;
 
     return {
       selected,

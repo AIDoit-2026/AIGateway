@@ -37,6 +37,8 @@ describe('TokenRouter selection scoring', () => {
   let idSeed = 0;
   let originalRoutingWeights: typeof config.routingWeights;
   let originalRoutingFallbackUnitCost: number;
+  let originalTokenRouterFailureThreshold: number;
+  let originalTokenRouterFailureCooldownMinutes: number;
   let originalProxySessionChannelConcurrencyLimit: number;
   let originalProxySessionChannelQueueWaitMs: number;
 
@@ -67,6 +69,8 @@ describe('TokenRouter selection scoring', () => {
     resetProxyChannelCoordinatorState = coordinatorModule.resetProxyChannelCoordinatorState;
     originalRoutingWeights = { ...config.routingWeights };
     originalRoutingFallbackUnitCost = config.routingFallbackUnitCost;
+    originalTokenRouterFailureThreshold = config.tokenRouterFailureThreshold;
+    originalTokenRouterFailureCooldownMinutes = config.tokenRouterFailureCooldownMinutes;
     originalProxySessionChannelConcurrencyLimit = config.proxySessionChannelConcurrencyLimit;
     originalProxySessionChannelQueueWaitMs = config.proxySessionChannelQueueWaitMs;
   });
@@ -75,6 +79,8 @@ describe('TokenRouter selection scoring', () => {
     idSeed = 0;
     mockedCatalogRoutingCost.mockReset();
     mockedCatalogRoutingCost.mockReturnValue(null);
+    config.tokenRouterFailureThreshold = originalTokenRouterFailureThreshold;
+    config.tokenRouterFailureCooldownMinutes = originalTokenRouterFailureCooldownMinutes;
     config.proxySessionChannelConcurrencyLimit = originalProxySessionChannelConcurrencyLimit;
     config.proxySessionChannelQueueWaitMs = originalProxySessionChannelQueueWaitMs;
     await db.delete(schema.routeChannels).run();
@@ -91,6 +97,8 @@ describe('TokenRouter selection scoring', () => {
   afterAll(() => {
     config.routingWeights = { ...originalRoutingWeights };
     config.routingFallbackUnitCost = originalRoutingFallbackUnitCost;
+    config.tokenRouterFailureThreshold = originalTokenRouterFailureThreshold;
+    config.tokenRouterFailureCooldownMinutes = originalTokenRouterFailureCooldownMinutes;
     config.proxySessionChannelConcurrencyLimit = originalProxySessionChannelConcurrencyLimit;
     config.proxySessionChannelQueueWaitMs = originalProxySessionChannelQueueWaitMs;
     invalidateTokenRouterCache();
@@ -446,7 +454,7 @@ describe('TokenRouter selection scoring', () => {
     expect(probA1 + probA2).toBeCloseTo(probB, 1);
   });
 
-  it('uses observed channel cost from real routing results when scoring cost priority', async () => {
+  it('shows observed channel cost from real routing results in stable-first diagnostics', async () => {
     config.routingWeights = {
       baseWeightFactor: 0.35,
       valueScoreFactor: 0.65,
@@ -493,12 +501,11 @@ describe('TokenRouter selection scoring', () => {
 
     expect(cheapCandidate).toBeTruthy();
     expect(expensiveCandidate).toBeTruthy();
-    expect((cheapCandidate?.probability || 0)).toBeGreaterThan(expensiveCandidate?.probability || 0);
-    expect(cheapCandidate?.reason || '').toContain('成本=实测');
-    expect(expensiveCandidate?.reason || '').toContain('成本=实测');
+    expect(cheapCandidate?.reason || '').toContain('成本参考=实测');
+    expect(expensiveCandidate?.reason || '').toContain('成本参考=实测');
   });
 
-  it('uses runtime-configured fallback unit cost when observed and configured costs are missing', async () => {
+  it('shows runtime-configured fallback unit cost when observed and configured costs are missing', async () => {
     config.routingWeights = {
       baseWeightFactor: 0.35,
       valueScoreFactor: 0.65,
@@ -546,11 +553,10 @@ describe('TokenRouter selection scoring', () => {
 
     expect(fallbackCandidate).toBeTruthy();
     expect(observedCandidate).toBeTruthy();
-    expect((fallbackCandidate?.probability || 0)).toBeGreaterThan(observedCandidate?.probability || 0);
-    expect(fallbackCandidate?.reason || '').toContain('成本=默认:0.020000');
+    expect(fallbackCandidate?.reason || '').toContain('成本参考=默认:0.020000');
   });
 
-  it('penalizes fallback-cost channels when fallback unit cost is set very high', async () => {
+  it('shows high fallback cost without using it as a stable-first selection penalty', async () => {
     config.routingWeights = {
       baseWeightFactor: 0.35,
       valueScoreFactor: 0.65,
@@ -612,12 +618,11 @@ describe('TokenRouter selection scoring', () => {
 
     expect(fallbackCandidate).toBeTruthy();
     expect(observedCandidate).toBeTruthy();
-    expect((fallbackCandidate?.probability || 0)).toBeLessThan(1);
-    expect((observedCandidate?.probability || 0)).toBeGreaterThan(99);
-    expect(fallbackCandidate?.reason || '').toContain('成本=默认:1000.000000');
+    expect(fallbackCandidate?.reason || '').toContain('成本参考=默认:1000.000000');
+    expect(observedCandidate?.reason || '').toContain('成本参考=实测:1.000000');
   });
 
-  it('uses cached catalog routing cost when observed and configured costs are missing', async () => {
+  it('shows cached catalog routing cost when observed and configured costs are missing', async () => {
     config.routingWeights = {
       baseWeightFactor: 0.35,
       valueScoreFactor: 0.65,
@@ -671,9 +676,8 @@ describe('TokenRouter selection scoring', () => {
 
     expect(catalogCandidate).toBeTruthy();
     expect(fallbackCandidate).toBeTruthy();
-    expect((catalogCandidate?.probability || 0)).toBeGreaterThan(fallbackCandidate?.probability || 0);
-    expect(catalogCandidate?.reason || '').toContain('成本=目录:0.200000');
-    expect(fallbackCandidate?.reason || '').toContain('成本=默认:100.000000');
+    expect(catalogCandidate?.reason || '').toContain('成本参考=目录:0.200000');
+    expect(fallbackCandidate?.reason || '').toContain('成本参考=默认:100.000000');
   });
 
   it('downweights a site after transient failures and restores it quickly after success', async () => {
@@ -1546,6 +1550,79 @@ describe('TokenRouter selection scoring', () => {
     expect(third?.channel.id).toBe(channelC.id);
     expect(fourth?.channel.id).toBe(channelA.id);
     expect(decision.summary.join(' ')).toContain('按配置顺序轮询站点');
+  });
+
+  it('stable_first skips a channel after configured failures and makes it eligible again after recovery', async () => {
+    config.tokenRouterFailureThreshold = 2;
+    config.tokenRouterFailureCooldownMinutes = 5;
+
+    const route = await db.insert(schema.tokenRoutes).values({
+      modelPattern: 'gpt-5.4-cooldown',
+      routingStrategy: 'stable_first',
+      enabled: true,
+    }).returning().get();
+
+    const siteA = await createSite('configured-cooldown-a');
+    const accountA = await createAccount(siteA.id, 'configured-cooldown-user-a');
+    const tokenA = await createToken(accountA.id, 'configured-cooldown-token-a');
+    const channelA = await db.insert(schema.routeChannels).values({
+      routeId: route.id,
+      accountId: accountA.id,
+      tokenId: tokenA.id,
+      priority: 0,
+      weight: 10,
+      enabled: true,
+    }).returning().get();
+
+    const siteB = await createSite('configured-cooldown-b');
+    const accountB = await createAccount(siteB.id, 'configured-cooldown-user-b');
+    const tokenB = await createToken(accountB.id, 'configured-cooldown-token-b');
+    const channelB = await db.insert(schema.routeChannels).values({
+      routeId: route.id,
+      accountId: accountB.id,
+      tokenId: tokenB.id,
+      priority: 1,
+      weight: 10,
+      enabled: true,
+    }).returning().get();
+
+    const router = new TokenRouter();
+    const initial = await router.previewSelectedChannel('gpt-5.4-cooldown');
+    expect(initial?.channel.id).toBe(channelA.id);
+
+    const failureStartedAt = Date.now();
+    await router.recordFailure(channelA.id, { status: 502, errorText: 'Bad gateway' });
+    let failedChannel = await db.select().from(schema.routeChannels)
+      .where(eq(schema.routeChannels.id, channelA.id))
+      .get();
+    expect(failedChannel?.consecutiveFailCount).toBe(1);
+    expect(failedChannel?.cooldownUntil).toBeNull();
+
+    await router.recordFailure(channelA.id, { status: 502, errorText: 'Bad gateway' });
+    failedChannel = await db.select().from(schema.routeChannels)
+      .where(eq(schema.routeChannels.id, channelA.id))
+      .get();
+    expect(failedChannel?.consecutiveFailCount).toBe(0);
+    expect(failedChannel?.cooldownUntil).toBeTruthy();
+    expect(Date.parse(failedChannel?.cooldownUntil || '')).toBeGreaterThanOrEqual(failureStartedAt + 5 * 60 * 1000);
+
+    const duringCooldown = await router.previewSelectedChannel('gpt-5.4-cooldown');
+    expect(duringCooldown?.channel.id).toBe(channelB.id);
+
+    await router.recordSuccess(channelA.id, 250, 0, 'gpt-5.4-cooldown');
+    invalidateTokenRouterCache();
+
+    const recoveredChannel = await db.select().from(schema.routeChannels)
+      .where(eq(schema.routeChannels.id, channelA.id))
+      .get();
+    expect(recoveredChannel?.cooldownUntil).toBeNull();
+    expect(recoveredChannel?.consecutiveFailCount).toBe(0);
+
+    const afterRecovery = await router.explainSelection('gpt-5.4-cooldown');
+    const recoveredCandidate = afterRecovery.candidates.find((candidate) => candidate.channelId === channelA.id);
+    expect(recoveredCandidate?.eligible).toBe(true);
+    expect(recoveredCandidate?.reason || '').not.toContain('冷却中');
+    expect(recoveredCandidate?.probability || 0).toBeGreaterThan(0);
   });
 
   it('stable_first gives observation-pool sites occasional real traffic without background probing', async () => {
