@@ -68,9 +68,9 @@ export const ROUTE_GROUPING_COLUMN_COMPATIBILITY_SPECS: RouteGroupingColumnCompa
     table: 'token_routes',
     column: 'routing_strategy',
     addSql: {
-      sqlite: 'ALTER TABLE token_routes ADD COLUMN routing_strategy text DEFAULT \'weighted\';',
-      mysql: 'ALTER TABLE `token_routes` ADD COLUMN `routing_strategy` VARCHAR(32) NULL DEFAULT \'weighted\'',
-      postgres: 'ALTER TABLE "token_routes" ADD COLUMN "routing_strategy" TEXT DEFAULT \'weighted\'',
+      sqlite: 'ALTER TABLE token_routes ADD COLUMN routing_strategy text DEFAULT \'stable_first\';',
+      mysql: 'ALTER TABLE `token_routes` ADD COLUMN `routing_strategy` VARCHAR(32) NULL DEFAULT \'stable_first\'',
+      postgres: 'ALTER TABLE "token_routes" ADD COLUMN "routing_strategy" TEXT DEFAULT \'stable_first\'',
     },
   },
   {
@@ -187,5 +187,11 @@ export async function ensureRouteGroupingSchemaCompatibility(inspector: RouteGro
     if (!hasColumn) {
       await executeAddColumn(inspector, spec.addSql[inspector.dialect]);
     }
+  }
+
+  if (tableExistsCache.get('token_routes') && await inspector.columnExists('token_routes', 'routing_strategy')) {
+    await inspector.execute(
+      "UPDATE token_routes SET routing_strategy = 'stable_first' WHERE routing_strategy IS NULL OR LOWER(TRIM(routing_strategy)) <> 'stable_first'",
+    );
   }
 }
