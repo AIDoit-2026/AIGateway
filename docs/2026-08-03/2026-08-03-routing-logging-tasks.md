@@ -10,6 +10,8 @@ status: proposed
 - [x] 历史备份导入策略归一化：备份中的 `weighted`/`round_robin` 路由策略导入后统一保存为 `stable_first`，并更新回归断言。
 - [x] 历史策略边界覆盖：归一化测试覆盖空值、大小写、空白和未知策略输入。
 - [x] 数据库兼容默认值收敛：新旧数据库的 `routing_strategy` 默认值和启动归一化统一为 `stable_first`。
+- [x] Dispatch 选择路径收敛：删除实际转发路径中的 round-robin 与 weighted fallback，仅按 priority 和 channel ID 稳定选择。
+- [x] 路由诊断策略标识统一：`explainSelection()` 始终报告稳定优先，并统一将最近失败通道标记为避让对象。
 # 任务清单
 
 ## A. 现状基线与复现

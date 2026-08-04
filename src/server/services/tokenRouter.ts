@@ -1987,7 +1987,6 @@ export class TokenRouter {
     const bypassSourceModelCheck = (options.bypassSourceModelCheck ?? false) || requestedByDisplayName;
     const useChannelSourceModelForCost = (options.useChannelSourceModelForCost ?? false) || requestedByDisplayName;
     const mappedModel = resolveMappedModel(requestedModel, match.route.modelMapping);
-    const routeStrategy = resolveRouteStrategy(match.route);
     const runtimeModelResolver = requestedByDisplayName
       ? ((candidate: RouteChannelCandidate) => normalizeChannelSourceModel(candidate.channel.sourceModel) || mappedModel)
       : mappedModel;
@@ -1996,9 +1995,7 @@ export class TokenRouter {
     const nowMs = Date.now();
     const summary: string[] = [
       `命中路由：${match.route.modelPattern}`,
-      routeStrategy === 'round_robin'
-        ? '路由策略：轮询'
-        : (routeStrategy === 'stable_first' ? '路由策略：稳定优先' : '路由策略：按权重随机'),
+      '路由策略：稳定优先',
     ];
     if (requestedByDisplayName) {
       summary.push(`按显示名命中：${normalizeRouteDisplayName(match.route.displayName)}`);
@@ -2017,9 +2014,7 @@ export class TokenRouter {
         downstreamPolicy,
       });
 
-      const recentlyFailed = routeStrategy !== 'round_robin'
-        ? isChannelRecentlyFailed(row.channel, nowMs)
-        : false;
+      const recentlyFailed = isChannelRecentlyFailed(row.channel, nowMs);
       const eligible = reasonParts.length === 0;
       const candidate: RouteDecisionCandidate = {
         channelId: row.channel.id,
@@ -2827,7 +2822,6 @@ export class TokenRouter {
     const mappedModel = resolveMappedModel(requestedModel, match.route.modelMapping);
     const requestedByDisplayName = isRouteDisplayNameMatch(requestedModel, match.route.displayName);
     const bypassSourceModelCheck = requestedByDisplayName;
-    const routeStrategy = resolveRouteStrategy(match.route);
     const runtimeModelResolver = requestedByDisplayName
       ? ((candidate: RouteChannelCandidate) => normalizeChannelSourceModel(candidate.channel.sourceModel) || mappedModel)
       : mappedModel;
@@ -2846,87 +2840,27 @@ export class TokenRouter {
 
     if (available.length === 0) return null;
 
-    if (routeStrategy === 'round_robin') {
-      const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
-      const selected = this.selectRoundRobinCandidate(breakerFiltered.candidates);
-      if (!selected) return null;
-      return await this.finalizeSelectedCandidateForDispatch(
-        selected,
-        match,
-        requestedModel,
-        mappedModel,
-        downstreamPolicy,
-        recordSelection,
-        nowIso,
-        nowMs,
-        undefined,
-        undefined,
-        false,
-        excludeChannelIds,
-      );
-    }
-
-    if (routeStrategy === 'stable_first') {
-      const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
-      const candidates = filterRecentlyFailedCandidates(breakerFiltered.candidates, nowMs);
-      const selected = [...candidates].sort((left, right) => (
-        (left.channel.priority ?? 0) - (right.channel.priority ?? 0)
-        || left.channel.id - right.channel.id
-      ))[0] ?? null;
-      if (!selected) return null;
-      return await this.finalizeSelectedCandidateForDispatch(
-        selected,
-        match,
-        requestedModel,
-        mappedModel,
-        downstreamPolicy,
-        recordSelection,
-        nowIso,
-        nowMs,
-        undefined,
-        undefined,
-        false,
-        excludeChannelIds,
-      );
-    }
-
-    const layers = new Map<number, typeof available>();
-    for (const candidate of available) {
-      const priority = candidate.channel.priority ?? 0;
-      if (!layers.has(priority)) layers.set(priority, []);
-      layers.get(priority)!.push(candidate);
-    }
-
-    const sortedPriorities = Array.from(layers.keys()).sort((a, b) => a - b);
-    for (const priority of sortedPriorities) {
-      const rawLayer = layers.get(priority) ?? [];
-      const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(rawLayer, runtimeModelResolver, nowMs);
-      const candidates = filterRecentlyFailedCandidates(breakerFiltered.candidates, nowMs);
-      const selected = this.weightedRandomSelect(
-        candidates,
-        requestedByDisplayName ? runtimeModelResolver : mappedModel,
-        downstreamPolicy,
-        nowMs,
-      );
-      if (!selected) continue;
-      const resolved = await this.finalizeSelectedCandidateForDispatch(
-        selected,
-        match,
-        requestedModel,
-        mappedModel,
-        downstreamPolicy,
-        recordSelection,
-        nowIso,
-        nowMs,
-        undefined,
-        undefined,
-        false,
-        excludeChannelIds,
-      );
-      if (resolved) return resolved;
-    }
-
-    return null;
+    const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
+    const candidates = filterRecentlyFailedCandidates(breakerFiltered.candidates, nowMs);
+    const selected = [...candidates].sort((left, right) => (
+      (left.channel.priority ?? 0) - (right.channel.priority ?? 0)
+      || left.channel.id - right.channel.id
+    ))[0] ?? null;
+    if (!selected) return null;
+    return await this.finalizeSelectedCandidateForDispatch(
+      selected,
+      match,
+      requestedModel,
+      mappedModel,
+      downstreamPolicy,
+      recordSelection,
+      nowIso,
+      nowMs,
+      undefined,
+      undefined,
+      false,
+      excludeChannelIds,
+    );
   }
 
   private async selectPreferredFromMatch(
