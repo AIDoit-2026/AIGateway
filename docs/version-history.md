@@ -5,6 +5,7 @@
 - 完善上游失败日志，记录真实请求 URL、HTTP 方法和请求头，不再使用站点 URL 与模型名拼接虚假地址。
 - 增强 Responses/Chat endpoint 流程的失败上下文传递，便于定位 `/v1/responses` 等实际请求路径。
 - 补充日志回归测试和任务清单状态，提升上游 502、超时及 endpoint fallback 问题的诊断能力。
+- Docker 构建脚本支持通过 `https_proxy`/`HTTPS_PROXY` 等环境变量向构建阶段传递代理，便于下载 npm 依赖。
 
 ## 2.0.2 - 2026-07-06
 
