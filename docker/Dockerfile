@@ -1,6 +1,4 @@
-# Keep the Docker base on Node 22 because the official Node 24/25 slim images
-# no longer publish linux/arm/v7 manifests, which breaks our armv7 Docker jobs.
-FROM node:22-bookworm-slim AS builder
+FROM node:26.5.0-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -18,26 +16,16 @@ COPY . .
 RUN npm run build:web && npm run build:server
 RUN npm prune --omit=dev --no-audit --no-fund
 
-FROM node:22-bookworm-slim
+FROM node:26.5.0-trixie-slim
 
 WORKDIR /app
 
-ARG TARGETARCH
-ARG TARGETVARIANT
+ARG ARCH=amd64
 ARG KUBECTL_VERSION=v1.31.8
 ARG HELM_VERSION=v3.18.6
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl tar gzip \
-  && case "$TARGETARCH" in \
-    amd64|arm64) export ARCH="$TARGETARCH" ;; \
-    arm) \
-      if [ "${TARGETVARIANT:-}" = "v7" ]; then \
-        export ARCH="arm"; \
-      else \
-        echo "Unsupported TARGETARCH/TARGETVARIANT: $TARGETARCH/${TARGETVARIANT:-}" >&2; exit 1; \
-      fi ;; \
-    *) echo "Unsupported TARGETARCH/TARGETVARIANT: $TARGETARCH/${TARGETVARIANT:-}" >&2; exit 1 ;; \
   esac \
   && curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" \
   && chmod +x /usr/local/bin/kubectl \
