@@ -560,6 +560,51 @@ describe('selectSurfaceChannelForAttempt', () => {
     }));
   });
 
+  it('logs the actual upstream target instead of synthesizing a site/model URL', async () => {
+    shouldRetryProxyRequestMock.mockReturnValue(false);
+    isTokenExpiredErrorMock.mockReturnValue(false);
+    recordOauthQuotaResetHintMock.mockResolvedValue(null);
+
+    const { createSurfaceFailureToolkit } = await import('./sharedSurface.js');
+    const toolkit = createSurfaceFailureToolkit({
+      warningScope: 'responses',
+      downstreamPath: '/v1/responses',
+      maxRetries: 0,
+      clientContext: null,
+      downstreamApiKeyId: null,
+    });
+
+    await toolkit.handleUpstreamFailure({
+      selected: {
+        channel: { id: 11, routeId: 22 },
+        account: { id: 33 },
+        site: { name: 'Example', url: 'https://example.invalid' },
+      },
+      requestedModel: 'gpt-5.6-terra',
+      modelName: 'gpt-5.6-terra',
+      status: 502,
+      errText: '[upstream:/v1/responses] Upstream returned HTTP 502',
+      rawErrText: 'Cloudflare 502: Bad gateway',
+      upstreamUrl: 'https://ai.070798.xyz/v1/responses',
+      upstreamMethod: 'POST',
+      upstreamHeaders: {
+        accept: 'application/json',
+      },
+      latencyMs: 10,
+      retryCount: 0,
+    });
+
+    expect(consoleWarnMock).toHaveBeenCalledWith(
+      '[upstream/proxy/responses] failed',
+      expect.objectContaining({
+        url: 'https://ai.070798.xyz/v1/responses',
+        method: 'POST',
+        headers: { accept: 'application/json' },
+        status: 502,
+      }),
+    );
+  });
+
   it('keeps retryable failures on the retry path even when quota hint recording fails', async () => {
     composeProxyLogMessageMock.mockReturnValue('normalized error');
     formatUtcSqlDateTimeMock.mockReturnValue('2026-03-21 22:00:00');

@@ -869,6 +869,10 @@ export async function handleOpenAiResponsesSurfaceRequest(
             const upstreamFailure = new SiteApiEndpointRequestError(result.errText || 'unknown error', {
               status: result.status || 502,
               rawErrText: result.rawErrText || result.errText || 'unknown error',
+              targetUrl: result.targetUrl,
+              requestPath: result.request?.path,
+              method: 'POST',
+              headers: result.request?.headers,
             }) as SiteApiEndpointRequestError & { siteApiEndpointUpstreamFailure?: boolean };
             upstreamFailure.siteApiEndpointUpstreamFailure = true;
             throw upstreamFailure;
@@ -878,6 +882,7 @@ export async function handleOpenAiResponsesSurfaceRequest(
 
         const upstream = endpointResult.upstream;
         const successfulUpstreamPath = endpointResult.upstreamPath;
+        const successfulUpstreamTargetUrl = endpointResult.targetUrl;
         const firstByteLatencyMs = getObservedResponseMeta(upstream)?.firstByteLatencyMs ?? null;
         const finalizeStreamSuccess = async (
           parsedUsage: UsageSummary,
@@ -1047,6 +1052,7 @@ export async function handleOpenAiResponsesSurfaceRequest(
                 completionTokens: parsedUsage.completionTokens,
                 totalTokens: parsedUsage.totalTokens,
                 upstreamPath: successfulUpstreamPath,
+                upstreamUrl: successfulUpstreamTargetUrl,
 	              });
 	              const terminalFailureOutcome = failureOutcome.action === 'retry'
 	                ? (canRetryChannelSelection(retryCount, forcedChannelId)
@@ -1315,6 +1321,7 @@ export async function handleOpenAiResponsesSurfaceRequest(
             completionTokens: parsedUsage.completionTokens,
             totalTokens: parsedUsage.totalTokens,
             upstreamPath: successfulUpstreamPath,
+            upstreamUrl: successfulUpstreamTargetUrl,
 	          });
 	          const terminalFailureOutcome = failureOutcome.action === 'retry'
 	            ? (canRetryChannelSelection(retryCount, forcedChannelId)
@@ -1399,6 +1406,9 @@ export async function handleOpenAiResponsesSurfaceRequest(
           status: endpointFailureStatus || 502,
           errText: err?.message || 'unknown error',
           rawErrText: err?.rawErrText || err?.message || 'unknown error',
+          upstreamUrl: err?.targetUrl || null,
+          upstreamMethod: err?.method || 'POST',
+          upstreamHeaders: err?.headers || null,
           isStream,
           latencyMs: Date.now() - startTime,
           retryCount,

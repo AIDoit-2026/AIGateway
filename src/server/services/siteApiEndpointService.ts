@@ -50,11 +50,19 @@ export class SiteApiEndpointRequestError extends Error {
   readonly status: number | null;
   readonly rawErrText: string | null;
   readonly firstByteLatencyMs: number | null;
+  readonly targetUrl: string | null;
+  readonly requestPath: string | null;
+  readonly method: string;
+  readonly headers: Record<string, string>;
 
   constructor(message: string, options?: {
     status?: number | null;
     rawErrText?: string | null;
     firstByteLatencyMs?: number | null;
+    targetUrl?: string | null;
+    requestPath?: string | null;
+    method?: string | null;
+    headers?: Record<string, string> | null;
     cause?: unknown;
   }) {
     super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
@@ -66,6 +74,16 @@ export class SiteApiEndpointRequestError extends Error {
     this.firstByteLatencyMs = typeof options?.firstByteLatencyMs === 'number' && Number.isFinite(options.firstByteLatencyMs)
       ? options.firstByteLatencyMs
       : null;
+    this.targetUrl = typeof options?.targetUrl === 'string' && options.targetUrl.trim()
+      ? options.targetUrl.trim()
+      : null;
+    this.requestPath = typeof options?.requestPath === 'string' && options.requestPath.trim()
+      ? options.requestPath.trim()
+      : null;
+    this.method = typeof options?.method === 'string' && options.method.trim()
+      ? options.method.trim().toUpperCase()
+      : 'POST';
+    this.headers = options?.headers ? { ...options.headers } : {};
   }
 }
 

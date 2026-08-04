@@ -54,6 +54,7 @@ export type EndpointFlowResult =
     ok: true;
     upstream: Awaited<ReturnType<typeof fetch>>;
     upstreamPath: string;
+    targetUrl: string;
     attemptCount: number;
   }
   | {
@@ -61,6 +62,8 @@ export type EndpointFlowResult =
     status: number;
     errText: string;
     rawErrText?: string;
+    targetUrl?: string;
+    request?: Pick<BuiltEndpointRequest, 'path' | 'headers'>;
     attemptCount: number;
   };
 
@@ -116,6 +119,8 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
   let finalErrText = 'unknown error';
   let finalRawErrText: string | undefined;
   let attemptCount = 0;
+  let lastTargetUrl: string | undefined;
+  let lastRequest: BuiltEndpointRequest | undefined;
 
   for (let endpointIndex = 0; endpointIndex < endpointCount; endpointIndex += 1) {
     attemptCount += 1;
@@ -125,6 +130,8 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
     const targetUrl = input.proxyUrl
       ? buildUpstreamUrl(input.proxyUrl, request.path)
       : defaultTarget;
+    lastTargetUrl = targetUrl;
+    lastRequest = request;
 
     const attemptStartedAtMs = Date.now();
     let response: Awaited<ReturnType<typeof fetch>>;
@@ -173,6 +180,7 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
         ok: true,
         upstream: response,
         upstreamPath: request.path,
+        targetUrl,
         attemptCount,
       };
     }
@@ -239,6 +247,7 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
           ok: true,
           upstream: recovered.upstream,
           upstreamPath: recovered.upstreamPath,
+          targetUrl: recoveredTargetUrl,
           attemptCount,
         };
       }
@@ -291,6 +300,10 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
     status: finalStatus || 502,
     errText: finalErrText || 'unknown error',
     rawErrText: finalRawErrText,
+    targetUrl: lastTargetUrl,
+    request: lastRequest
+      ? { path: lastRequest.path, headers: lastRequest.headers }
+      : undefined,
     attemptCount,
   };
 }

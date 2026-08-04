@@ -402,6 +402,11 @@ describe('executeEndpointFlow', () => {
       expect(result.status).toBe(400);
       expect(result.errText).toContain('[upstream:/v1/responses]');
       expect(result.errText).toContain('Upstream returned HTTP 400');
+      expect(result.targetUrl).toBe('https://example.com/v1/responses');
+      expect(result.request).toEqual({
+        path: '/v1/responses',
+        headers: { 'content-type': 'application/json' },
+      });
       expect(result.attemptCount).toBe(1);
     }
   });

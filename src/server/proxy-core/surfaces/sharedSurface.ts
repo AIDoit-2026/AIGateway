@@ -623,6 +623,10 @@ export function createSurfaceFailureToolkit(input: {
       status: number;
       errText: string;
       rawErrText?: string | null;
+      upstreamUrl?: string | null;
+      upstreamMethod?: string | null;
+      upstreamHeaders?: Record<string, string> | null;
+      requestId?: string | null;
       isStream?: boolean | null;
       firstByteLatencyMs?: number | null;
       latencyMs: number;
@@ -631,7 +635,10 @@ export function createSurfaceFailureToolkit(input: {
       const rawErrText = args.rawErrText || args.errText;
       logFailedUpstreamRequest({
         scope: `proxy/${input.warningScope}`,
-        url: `${args.selected.site.url || args.selected.site.name || 'upstream'}${args.modelName ? `/${args.modelName}` : ''}`,
+        url: args.upstreamUrl || 'upstream',
+        method: args.upstreamMethod || 'POST',
+        headers: args.upstreamHeaders || undefined,
+        requestId: args.requestId || undefined,
         status: args.status,
         error: new Error(args.errText),
       });
@@ -701,10 +708,17 @@ export function createSurfaceFailureToolkit(input: {
       completionTokens?: number | null;
       totalTokens?: number | null;
       upstreamPath?: string | null;
+      upstreamUrl?: string | null;
+      upstreamMethod?: string | null;
+      upstreamHeaders?: Record<string, string> | null;
+      requestId?: string | null;
     }): Promise<SurfaceFailureOutcome> {
       logFailedUpstreamRequest({
         scope: `proxy/${input.warningScope}`,
-        url: `${args.selected.site.url || args.selected.site.name || 'upstream'}${args.upstreamPath || ''}`,
+        url: args.upstreamUrl || 'upstream',
+        method: args.upstreamMethod || 'POST',
+        headers: args.upstreamHeaders || undefined,
+        requestId: args.requestId || undefined,
         status: args.failure.status,
         error: new Error(args.failure.reason),
       });
@@ -760,10 +774,17 @@ export function createSurfaceFailureToolkit(input: {
       firstByteLatencyMs?: number | null;
       latencyMs: number;
       retryCount: number;
+      upstreamUrl?: string | null;
+      upstreamMethod?: string | null;
+      upstreamHeaders?: Record<string, string> | null;
+      requestId?: string | null;
     }): Promise<SurfaceFailureOutcome> {
       logFailedUpstreamRequest({
         scope: `proxy/${input.warningScope}`,
-        url: args.selected.site.url || args.selected.site.name || 'upstream',
+        url: args.upstreamUrl || 'upstream',
+        method: args.upstreamMethod || 'POST',
+        headers: args.upstreamHeaders || undefined,
+        requestId: args.requestId || undefined,
         error: new Error(args.errorMessage || 'network failure'),
       });
       await recordFailure('record execution error', args.selected, {

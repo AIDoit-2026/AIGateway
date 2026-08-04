@@ -569,6 +569,10 @@ export async function handleChatSurfaceRequest(
           const upstreamFailure = new SiteApiEndpointRequestError(result.errText || 'unknown error', {
             status: result.status || 502,
             rawErrText: result.rawErrText || result.errText || 'unknown error',
+            targetUrl: result.targetUrl,
+            requestPath: result.request?.path,
+            method: 'POST',
+            headers: result.request?.headers,
           }) as SiteApiEndpointRequestError & { siteApiEndpointUpstreamFailure?: boolean };
           upstreamFailure.siteApiEndpointUpstreamFailure = true;
           throw upstreamFailure;
@@ -578,6 +582,7 @@ export async function handleChatSurfaceRequest(
 
       const upstream = endpointResult.upstream;
       const successfulUpstreamPath = endpointResult.upstreamPath;
+      const successfulUpstreamTargetUrl = endpointResult.targetUrl;
       const firstByteLatencyMs = getObservedResponseMeta(upstream)?.firstByteLatencyMs ?? null;
 
       if (isStream) {
@@ -748,6 +753,7 @@ export async function handleChatSurfaceRequest(
               completionTokens: parsedUsage.completionTokens,
               totalTokens: parsedUsage.totalTokens,
               upstreamPath: successfulUpstreamPath,
+              upstreamUrl: successfulUpstreamTargetUrl,
             });
             const terminalFailureOutcome = failureOutcome.action === 'retry'
               ? (canRetryChannelSelection(retryCount, forcedChannelId)
@@ -950,6 +956,7 @@ export async function handleChatSurfaceRequest(
           completionTokens: parsedUsage.completionTokens,
           totalTokens: parsedUsage.totalTokens,
           upstreamPath: successfulUpstreamPath,
+          upstreamUrl: successfulUpstreamTargetUrl,
         });
         const terminalFailureOutcome = failureOutcome.action === 'retry'
           ? (canRetryChannelSelection(retryCount, forcedChannelId)
@@ -1039,6 +1046,9 @@ export async function handleChatSurfaceRequest(
           status: endpointFailureStatus || 502,
           errText: err.message || 'unknown error',
           rawErrText: err.rawErrText || err.message || 'unknown error',
+          upstreamUrl: err.targetUrl || null,
+          upstreamMethod: err.method || 'POST',
+          upstreamHeaders: err.headers || null,
           isStream,
           latencyMs: Date.now() - startTime,
           retryCount,
@@ -1489,6 +1499,9 @@ export async function handleClaudeCountTokensSurfaceRequest(
           status: endpointFailureStatus || 502,
           errText: error.message || 'unknown error',
           rawErrText: error.rawErrText || error.message || 'unknown error',
+          upstreamUrl: error.targetUrl || null,
+          upstreamMethod: error.method || 'POST',
+          upstreamHeaders: error.headers || null,
           isStream: false,
           latencyMs: Date.now() - startTime,
           retryCount,
