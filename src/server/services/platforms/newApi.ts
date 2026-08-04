@@ -738,7 +738,7 @@ export class NewApiAdapter extends BasePlatformAdapter {
         headers,
       };
       const proxiedRequestOptions = await withSiteProxyRequestInit(url, requestOptions);
-      let res: Response;
+      let res;
       try {
         res = await fetch(url, proxiedRequestOptions);
       } catch (error) {
