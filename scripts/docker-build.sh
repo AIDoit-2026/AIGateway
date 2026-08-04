@@ -5,7 +5,7 @@ set -euo pipefail
 #   ./scripts/docker-build.sh
 #   IMAGE_NAME=aigateway ./scripts/docker-build.sh
 #   PLATFORM=linux/amd64 ./scripts/docker-build.sh --no-cache
-#   TAG_LATEST=0 VERSION=2.0.2 ./scripts/docker-build.sh
+#   TAG_LATEST=0 VERSION=2.1.0 ./scripts/docker-build.sh
 #
 # Environment variables:
 #   IMAGE_NAME   Docker image name. Default: aigateway
@@ -15,7 +15,7 @@ set -euo pipefail
 #   Extra script arguments are passed through to docker build.
 
 # LAST RUN 
-# IMAGE_NAME=aigateway TAG_LATEST=0 VERSION=2.0.2 ./scripts/docker-build.sh
+# IMAGE_NAME=aigateway TAG_LATEST=0 VERSION=2.1.0 ./scripts/docker-build.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
