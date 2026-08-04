@@ -62,6 +62,7 @@ import {
   clearSurfaceStickyChannel,
   createSurfaceFailureToolkit,
   createSurfaceDispatchRequest,
+  createSurfaceResponseOwner,
   getSurfaceStickyPreferredChannelId,
   recordSurfaceSuccess,
   selectSurfaceChannelForAttempt,
@@ -237,8 +238,21 @@ export async function handleChatSurfaceRequest(
 
   const excludeChannelIds: number[] = [];
   let retryCount = 0;
+  const responseOwner = createSurfaceResponseOwner({
+    isResponseCommitted: () => reply.sent || reply.raw.headersSent || reply.raw.writableEnded,
+  });
+  const sendOwnedJson = (
+    owner: string,
+    status: number,
+    payload: unknown,
+    kind: 'json' | 'error' = 'error',
+  ) => {
+    if (!responseOwner.commit(owner, kind)) return undefined;
+    return reply.code(status).send(payload);
+  };
 
-  while (retryCount <= maxRetries) {
+  while (retryCount <= maxRetries && responseOwner.canRetry()) {
+    responseOwner.beginChannelAttempt();
     const stickyPreferredChannelId = retryCount === 0
       ? getSurfaceStickyPreferredChannelId(stickySessionKey)
       : null;
@@ -261,7 +275,7 @@ export async function handleChatSurfaceRequest(
         error: { message: noChannelMessage, type: 'server_error' as const },
       };
       await finalizeDebugFailure(503, payload, null);
-      return reply.code(503).send({
+      return sendOwnedJson('chat:no-channel', 503, {
         error: { message: noChannelMessage, type: 'server_error' },
       });
     }
@@ -539,7 +553,7 @@ export async function handleChatSurfaceRequest(
           type: 'server_error',
         },
       });
-      return reply.code(503).send({
+      return sendOwnedJson('chat:busy', 503, {
         error: {
           message: busyMessage,
           type: 'server_error',
@@ -570,7 +584,8 @@ export async function handleChatSurfaceRequest(
         const upstreamContentType = (upstream.headers.get('content-type') || '').toLowerCase();
         let streamStarted = false;
         const startSseResponse = () => {
-          if (streamStarted) return;
+          if (streamStarted) return true;
+          if (!responseOwner.commit('chat:stream', 'stream')) return false;
           streamStarted = true;
           reply.hijack();
           reply.raw.statusCode = 200;
@@ -578,6 +593,7 @@ export async function handleChatSurfaceRequest(
           reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
           reply.raw.setHeader('Connection', 'keep-alive');
           reply.raw.setHeader('X-Accel-Buffering', 'no');
+          return true;
         };
 
         let parsedUsage: ReturnType<typeof parseProxyUsage> = {
@@ -614,7 +630,7 @@ export async function handleChatSurfaceRequest(
         };
 
         const writeLines = (lines: string[]) => {
-          startSseResponse();
+          if (!startSseResponse()) return;
           for (const line of lines) {
             reply.raw.write(line);
           }
@@ -638,7 +654,7 @@ export async function handleChatSurfaceRequest(
           },
           writeLines,
           writeRaw: (chunk) => {
-            startSseResponse();
+            if (!startSseResponse()) return;
             reply.raw.write(chunk);
           },
         });
@@ -676,7 +692,7 @@ export async function handleChatSurfaceRequest(
                 },
               }, successfulUpstreamPath);
               if (!streamStarted) {
-                return reply.code(502).send({
+                return sendOwnedJson('chat:stream-fallback-error', 502, {
                   error: {
                     message: streamResult.errorMessage,
                     type: 'upstream_error',
@@ -747,7 +763,7 @@ export async function handleChatSurfaceRequest(
               terminalFailureOutcome.payload,
               successfulUpstreamPath,
             );
-            return reply.code(terminalFailureOutcome.status).send(terminalFailureOutcome.payload);
+            return sendOwnedJson('chat:stream-detected-failure', terminalFailureOutcome.status, terminalFailureOutcome.payload);
           }
 
           const streamResult = streamSession.consumeUpstreamFinalPayload(fallbackData, fallbackText, streamResponse);
@@ -776,7 +792,7 @@ export async function handleChatSurfaceRequest(
               },
             }, successfulUpstreamPath);
             if (!streamStarted) {
-              return reply.code(502).send({
+              return sendOwnedJson('chat:stream-final-payload-error', 502, {
                 error: {
                   message: streamResult.errorMessage,
                   type: 'upstream_error',
@@ -854,7 +870,7 @@ export async function handleChatSurfaceRequest(
               },
             }, successfulUpstreamPath);
             if (!streamStarted) {
-              return reply.code(502).send({
+              return sendOwnedJson('chat:stream-runtime-error', 502, {
                 error: {
                   message: streamResult.errorMessage,
                   type: 'upstream_error',
@@ -949,7 +965,7 @@ export async function handleChatSurfaceRequest(
           terminalFailureOutcome.payload,
           successfulUpstreamPath,
         );
-        return reply.code(terminalFailureOutcome.status).send(terminalFailureOutcome.payload);
+        return sendOwnedJson('chat:detected-failure', terminalFailureOutcome.status, terminalFailureOutcome.payload);
       }
       const normalizedFinal = downstreamTransformer.transformFinalResponse(upstreamData, modelName, rawText);
       const downstreamResponse = downstreamTransformer.serializeFinalResponse(normalizedFinal, parsedUsage);
@@ -986,7 +1002,7 @@ export async function handleChatSurfaceRequest(
         selected,
       });
 
-      return reply.send(downstreamResponse);
+      return sendOwnedJson('chat:json', upstream.status, downstreamResponse, 'json');
     } catch (err: any) {
       clearSurfaceStickyChannel({
         stickySessionKey,
@@ -1013,7 +1029,7 @@ export async function handleChatSurfaceRequest(
           };
         }
         await finalizeDebugFailure(endpointFailureStatus || 400, payload, null);
-        return reply.code(endpointFailureStatus || 400).send(payload);
+        return sendOwnedJson('chat:service-tier-blocked', endpointFailureStatus || 400, payload);
       }
       if (isSiteApiEndpointFailure) {
         const failureOutcome = await failureToolkit.handleUpstreamFailure({
@@ -1041,7 +1057,7 @@ export async function handleChatSurfaceRequest(
           terminalFailureOutcome.payload,
           null,
         );
-        return reply.code(terminalFailureOutcome.status).send(terminalFailureOutcome.payload);
+        return sendOwnedJson('chat:endpoint-failure', terminalFailureOutcome.status, terminalFailureOutcome.payload);
       }
       const failureOutcome = await failureToolkit.handleExecutionError({
         selected,
@@ -1066,7 +1082,7 @@ export async function handleChatSurfaceRequest(
         terminalFailureOutcome.payload,
         null,
       );
-      return reply.code(terminalFailureOutcome.status).send(terminalFailureOutcome.payload);
+      return sendOwnedJson('chat:execution-failure', terminalFailureOutcome.status, terminalFailureOutcome.payload);
       } finally {
         channelLease.release();
       }

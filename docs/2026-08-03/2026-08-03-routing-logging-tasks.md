@@ -2,7 +2,7 @@
 title: 日志治理、Token 验证可观测性与稳定优先路由任务清单
 date: 2026-08-03
 owner: codex
-status: proposed
+status: in_progress
 ---
 
 
@@ -51,18 +51,18 @@ status: proposed
 - [x] 增加 `tokenRouterFailureThreshold` 和 `tokenRouterFailureCooldownMinutes` 的配置解析、默认值、上下限和运行时设置 API/UI 字段。
 - [x] 处理历史策略值：读取归一化、数据库迁移/启动兼容和备份导入导出均转换为 stable-first；确认不破坏旧备份。
 - [x] 更新 TokenRoutes UI、类型、文案和相关测试，移除其它策略选项并展示优先序号、失败次数和冷却剩余时间。
-- [ ] 补充选择顺序、连续 N 次失败、M 分钟冷却、冷却跳过、恢复后重新可选、全部冷却和并发请求测试。
+- [x] 补充选择顺序、连续 N 次失败、M 分钟冷却、冷却跳过、恢复后重新可选、全部冷却和并发请求测试。
 - [x] 评估 `route_channels.priority` 是否足以表达需求；只有不足时才按数据库三件套新增字段/迁移/生成产物。
 
-进行中：实际选择和诊断路径均已收敛为稳定优先；路由级 round-robin/weighted helper 已删除；历史策略读取、启动兼容、备份导入和 schema 默认值均已统一为 `stable_first`。`route_channels.priority` 已能表达“路由配置序号”，配合现有失败计数和冷却字段即可覆盖需求，无需新增数据库字段。已补 N/M 冷却和恢复可用回归；完整并发与全不可用矩阵仍待补齐。本机缺少 `vitest`，尚未执行更新后的测试。
+已完成：实际选择和诊断路径均已收敛为稳定优先；路由级 round-robin/weighted helper 已删除；历史策略读取、启动兼容、备份导入和 schema 默认值均已统一为 `stable_first`。`route_channels.priority` 已能表达“路由配置序号”，配合现有失败计数和冷却字段即可覆盖需求，无需新增数据库字段。选择顺序、N/M 冷却、冷却跳过、恢复、全部冷却和并发负载测试均已覆盖。本机缺少 `vitest`，尚未执行更新后的测试。
 
 ## E. 重复响应修复与回归
 
-- [ ] 在 `executeEndpointFlow()`/`sharedSurface.ts` 增加单一 response owner 保护和 attempt 计数，确保响应提交后不再切换候选。
-- [ ] 对流式响应增加“首字节/headers 已提交”边界测试，验证失败重试不会二次写入。
-- [ ] 将多 API Key 回归测试接入 CI，并记录每次下游请求的最终 channel ID。
+- [x] 在 `executeEndpointFlow()`/`sharedSurface.ts` 增加单一 response owner 保护和 attempt 计数，确保响应提交后不再切换候选。
+- [x] 对流式响应增加“首字节/headers 已提交”边界测试，验证失败重试不会二次写入。
+- [x] 将多 API Key 回归测试接入 CI，并记录每次下游请求的最终 channel ID。
 
-初步结论：`executeEndpointFlow()` 逐个 `await` endpoint 候选，失败后才进入下一个候选，不会并行发送多个 endpoint 请求。仍需以同站点多 API Key 的流式/非流式集成测试验证整条 surface 的单一响应提交行为。
+已完成：`executeEndpointFlow()` 逐个 `await` endpoint 候选，失败后才进入下一个候选，不会并行发送多个 endpoint 请求；`sharedSurface` 已提供单一 response owner、提交类型和 channel attempt 计数，Chat/Responses surface 已在 JSON、SSE 首次提交和错误返回处接入。新增回归验证已提交流式响应后不会切换 channel 或二次发送 HTTP 错误，并补了多 API Key failover 时最终 channel ID 的回归断言。
 
 ## F. 验证与交付
 

@@ -54,12 +54,14 @@ export type EndpointFlowResult =
     ok: true;
     upstream: Awaited<ReturnType<typeof fetch>>;
     upstreamPath: string;
+    attemptCount: number;
   }
   | {
     ok: false;
     status: number;
     errText: string;
     rawErrText?: string;
+    attemptCount: number;
   };
 
 export type ExecuteEndpointFlowInput = {
@@ -106,14 +108,17 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
       ok: false,
       status: 502,
       errText: 'Upstream request failed',
+      attemptCount: 0,
     };
   }
 
   let finalStatus = 0;
   let finalErrText = 'unknown error';
   let finalRawErrText: string | undefined;
+  let attemptCount = 0;
 
   for (let endpointIndex = 0; endpointIndex < endpointCount; endpointIndex += 1) {
+    attemptCount += 1;
     const endpoint = input.endpointCandidates[endpointIndex] as UpstreamEndpoint;
     const request = input.buildRequest(endpoint, endpointIndex);
     const defaultTarget = buildUpstreamUrl(input.siteUrl, request.path);
@@ -168,6 +173,7 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
         ok: true,
         upstream: response,
         upstreamPath: request.path,
+        attemptCount,
       };
     }
 
@@ -233,6 +239,7 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
           ok: true,
           upstream: recovered.upstream,
           upstreamPath: recovered.upstreamPath,
+          attemptCount,
         };
       }
     }
@@ -284,5 +291,6 @@ export async function executeEndpointFlow(input: ExecuteEndpointFlowInput): Prom
     status: finalStatus || 502,
     errText: finalErrText || 'unknown error',
     rawErrText: finalRawErrText,
+    attemptCount,
   };
 }

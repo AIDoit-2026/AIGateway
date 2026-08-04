@@ -155,6 +155,7 @@ describe('executeEndpointFlow', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.upstreamPath).toBe('/v1/chat/completions');
+      expect(result.attemptCount).toBe(2);
     }
     expect(downgradedPaths).toEqual(['/v1/responses']);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -401,6 +402,7 @@ describe('executeEndpointFlow', () => {
       expect(result.status).toBe(400);
       expect(result.errText).toContain('[upstream:/v1/responses]');
       expect(result.errText).toContain('Upstream returned HTTP 400');
+      expect(result.attemptCount).toBe(1);
     }
   });
 });

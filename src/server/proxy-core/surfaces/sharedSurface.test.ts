@@ -171,6 +171,41 @@ describe('selectSurfaceChannelForAttempt', () => {
     expect(refreshModelsAndRebuildRoutesMock).toHaveBeenCalledTimes(1);
   });
 
+  it('tracks channel attempts and allows only one response owner to commit', async () => {
+    const { createSurfaceResponseOwner } = await import('./sharedSurface.js');
+    const owner = createSurfaceResponseOwner();
+
+    expect(owner.beginChannelAttempt()).toBe(1);
+    expect(owner.beginChannelAttempt()).toBe(2);
+    expect(owner.commit('chat:stream', 'stream')).toBe(true);
+    expect(owner.commit('chat:error', 'error')).toBe(false);
+    expect(owner.beginChannelAttempt()).toBe(2);
+    expect(owner.canRetry()).toBe(false);
+    expect(owner.snapshot()).toEqual({
+      committed: true,
+      owner: 'chat:stream',
+      commitKind: 'stream',
+      channelAttemptCount: 2,
+    });
+  });
+
+  it('treats an externally committed reply as owned even before local commit', async () => {
+    const { createSurfaceResponseOwner } = await import('./sharedSurface.js');
+    const owner = createSurfaceResponseOwner({
+      isResponseCommitted: () => true,
+    });
+
+    expect(owner.commit('responses:json', 'json')).toBe(false);
+    expect(owner.canRetry()).toBe(false);
+    expect(owner.beginChannelAttempt()).toBe(0);
+    expect(owner.snapshot()).toMatchObject({
+      committed: true,
+      owner: null,
+      commitKind: null,
+      channelAttemptCount: 0,
+    });
+  });
+
   it('uses selectNextChannel on retry attempts without refreshing models', async () => {
     const selected = { channel: { id: 22 } };
     selectNextChannelMock.mockResolvedValueOnce(selected);

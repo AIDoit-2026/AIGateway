@@ -104,6 +104,50 @@ type SurfaceResolvedUsageSummary = {
   usageSource: 'upstream' | 'self-log' | 'unknown';
 };
 
+export type SurfaceResponseCommitKind = 'json' | 'stream' | 'error';
+
+export type SurfaceResponseOwnerSnapshot = {
+  committed: boolean;
+  owner: string | null;
+  commitKind: SurfaceResponseCommitKind | null;
+  channelAttemptCount: number;
+};
+
+export function createSurfaceResponseOwner(input: {
+  isResponseCommitted?: () => boolean;
+} = {}) {
+  let owner: string | null = null;
+  let commitKind: SurfaceResponseCommitKind | null = null;
+  let channelAttemptCount = 0;
+
+  const isCommitted = () => commitKind !== null || input.isResponseCommitted?.() === true;
+
+  return {
+    beginChannelAttempt(): number {
+      if (isCommitted()) return channelAttemptCount;
+      channelAttemptCount += 1;
+      return channelAttemptCount;
+    },
+    canRetry(): boolean {
+      return !isCommitted();
+    },
+    commit(nextOwner: string, kind: SurfaceResponseCommitKind): boolean {
+      if (isCommitted()) return false;
+      owner = nextOwner;
+      commitKind = kind;
+      return true;
+    },
+    snapshot(): SurfaceResponseOwnerSnapshot {
+      return {
+        committed: isCommitted(),
+        owner,
+        commitKind,
+        channelAttemptCount,
+      };
+    },
+  };
+}
+
 export async function selectSurfaceChannelForAttempt(input: {
   requestedModel: string;
   downstreamPolicy: DownstreamRoutingPolicy;

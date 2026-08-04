@@ -1625,6 +1625,51 @@ describe('TokenRouter selection scoring', () => {
     expect(recoveredCandidate?.probability || 0).toBeGreaterThan(0);
   });
 
+  it('returns no channel when every stable_first candidate is in cooldown', async () => {
+    config.tokenRouterFailureThreshold = 1;
+    config.tokenRouterFailureCooldownMinutes = 5;
+
+    const route = await db.insert(schema.tokenRoutes).values({
+      modelPattern: 'gpt-5.4-all-cooldown',
+      routingStrategy: 'stable_first',
+      enabled: true,
+    }).returning().get();
+
+    const siteA = await createSite('all-cooldown-a');
+    const accountA = await createAccount(siteA.id, 'all-cooldown-user-a');
+    const tokenA = await createToken(accountA.id, 'all-cooldown-token-a');
+    const channelA = await db.insert(schema.routeChannels).values({
+      routeId: route.id,
+      accountId: accountA.id,
+      tokenId: tokenA.id,
+      priority: 0,
+      enabled: true,
+    }).returning().get();
+
+    const siteB = await createSite('all-cooldown-b');
+    const accountB = await createAccount(siteB.id, 'all-cooldown-user-b');
+    const tokenB = await createToken(accountB.id, 'all-cooldown-token-b');
+    const channelB = await db.insert(schema.routeChannels).values({
+      routeId: route.id,
+      accountId: accountB.id,
+      tokenId: tokenB.id,
+      priority: 1,
+      enabled: true,
+    }).returning().get();
+
+    const router = new TokenRouter();
+    await router.recordFailure(channelA.id, { status: 502, errorText: 'first channel failed' });
+    await router.recordFailure(channelB.id, { status: 502, errorText: 'second channel failed' });
+    invalidateTokenRouterCache();
+
+    await expect(router.previewSelectedChannel('gpt-5.4-all-cooldown')).resolves.toBeNull();
+    const decision = await router.explainSelection('gpt-5.4-all-cooldown');
+    expect(decision.candidates).toHaveLength(2);
+    expect(decision.candidates.every((candidate) => (
+      (candidate.reason || '').includes('冷却')
+    ))).toBe(true);
+  });
+
   it('stable_first gives observation-pool sites occasional real traffic without background probing', async () => {
     config.routingWeights = {
       baseWeightFactor: 1,

@@ -12,6 +12,7 @@ const recordFailureMock = vi.fn();
 const refreshModelsAndRebuildRoutesMock = vi.fn();
 const reportProxyAllFailedMock = vi.fn();
 const reportTokenExpiredMock = vi.fn();
+const shouldRetryProxyRequestMock = vi.fn((..._args: unknown[]) => false);
 const estimateProxyCostMock = vi.fn(async (_arg?: any) => 0);
 const buildProxyBillingDetailsMock = vi.fn(async (_arg?: any) => null);
 const fetchModelPricingCatalogMock = vi.fn(async (_arg?: any): Promise<any> => null);
@@ -63,7 +64,7 @@ vi.mock('../../services/modelPricingService.js', () => ({
 }));
 
 vi.mock('../../services/proxyRetryPolicy.js', () => ({
-  shouldRetryProxyRequest: () => false,
+  shouldRetryProxyRequest: (...args: unknown[]) => shouldRetryProxyRequestMock(...args),
   shouldAbortSameSiteEndpointFallback: () => false,
   RETRYABLE_TIMEOUT_PATTERNS: [/(request timed out|connection timed out|read timeout|\btimed out\b)/i],
 }));
@@ -108,6 +109,7 @@ vi.mock('../../db/index.js', () => ({
 
 describe('chat proxy stream behavior', () => {
   let app: FastifyInstance;
+  let originalProxyMaxChannelAttempts: number;
 
   beforeAll(async () => {
     const { chatProxyRoute, claudeMessagesProxyRoute } = await import('./chat.js');
@@ -118,6 +120,7 @@ describe('chat proxy stream behavior', () => {
     await app.register(claudeMessagesProxyRoute);
     await app.register(responsesProxyRoute);
     await app.register(searchProxyRoute);
+    originalProxyMaxChannelAttempts = config.proxyMaxChannelAttempts;
   });
 
   beforeEach(() => {
@@ -129,6 +132,8 @@ describe('chat proxy stream behavior', () => {
     refreshModelsAndRebuildRoutesMock.mockReset();
     reportProxyAllFailedMock.mockReset();
     reportTokenExpiredMock.mockReset();
+    shouldRetryProxyRequestMock.mockReset();
+    shouldRetryProxyRequestMock.mockReturnValue(false);
     estimateProxyCostMock.mockClear();
     buildProxyBillingDetailsMock.mockClear();
     fetchModelPricingCatalogMock.mockReset();
@@ -161,6 +166,7 @@ describe('chat proxy stream behavior', () => {
     (config as any).openAiServiceTierRules = undefined;
     config.proxyEmptyContentFailEnabled = false;
     config.proxyErrorKeywords = [];
+    config.proxyMaxChannelAttempts = originalProxyMaxChannelAttempts;
   });
 
   afterAll(async () => {
@@ -1766,6 +1772,8 @@ describe('chat proxy stream behavior', () => {
   });
 
   it('emits response.failed without synthetic response.completed when upstream stream fails on /v1/responses', async () => {
+    config.proxyMaxChannelAttempts = 2;
+    shouldRetryProxyRequestMock.mockReturnValue(true);
     fetchModelPricingCatalogMock.mockResolvedValue({
       models: [
         {
@@ -1806,6 +1814,69 @@ describe('chat proxy stream behavior', () => {
     expect(response.body).toContain('"status":"failed"');
     expect(response.body).not.toContain('response.completed');
     expect(response.body).toContain('[DONE]');
+    expect(selectNextChannelMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries /v1/responses on upstream failure and records the final channel id', async () => {
+    config.proxyMaxChannelAttempts = 2;
+    shouldRetryProxyRequestMock.mockReturnValue(true);
+
+    selectChannelMock.mockReturnValueOnce({
+      channel: { id: 11, routeId: 22 },
+      site: { name: 'demo-site', url: 'https://upstream.example.com' },
+      account: { id: 33, username: 'demo-user' },
+      tokenName: 'default',
+      tokenValue: 'sk-demo',
+      actualModel: 'upstream-gpt',
+    });
+    selectNextChannelMock.mockReturnValueOnce({
+      channel: { id: 12, routeId: 22 },
+      site: { name: 'demo-site-2', url: 'https://upstream-2.example.com' },
+      account: { id: 34, username: 'demo-user-2' },
+      tokenName: 'default',
+      tokenValue: 'sk-demo-2',
+      actualModel: 'upstream-gpt-2',
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: {
+          message: 'bad gateway',
+          type: 'upstream_error',
+        },
+      }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'resp-final-channel',
+        object: 'response',
+        status: 'completed',
+        model: 'upstream-gpt-2',
+        output_text: 'final channel response',
+        output: [],
+        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/responses',
+      payload: {
+        model: 'gpt-5.2',
+        input: 'hello',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()?.output_text).toContain('final channel response');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(selectNextChannelMock).toHaveBeenCalledTimes(1);
+    expect(recordSuccessMock).toHaveBeenCalledTimes(1);
+    expect(recordSuccessMock.mock.calls[0]?.[0]).toBe(12);
   });
 
   it('preserves Responses-specific payload fields and forwards openai headers on /v1/responses', async () => {
