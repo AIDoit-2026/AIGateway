@@ -95,6 +95,7 @@ vi.mock('../../db/index.js', () => ({
   },
   hasProxyLogBillingDetailsColumn: async () => false,
   hasProxyLogClientColumns: async () => false,
+  hasProxyLogClientIpColumn: async () => false,
   hasProxyLogDownstreamApiKeyIdColumn: async () => false,
   hasProxyLogStreamTimingColumns: async () => false,
   schema: {
@@ -173,6 +174,152 @@ describe('chat proxy stream behavior', () => {
     if (app) {
       await app.close();
     }
+  });
+
+  it('keeps two concurrent non-stream requests on distinct same-site API Key channels', async () => {
+    (config as any).disableCrossProtocolFallback = true;
+    const channels = [
+      { id: 41, tokenValue: 'sk-concurrent-a', username: 'key-a' },
+      { id: 42, tokenValue: 'sk-concurrent-b', username: 'key-b' },
+    ];
+    let selectIndex = 0;
+    let activeUpstreams = 0;
+    let maxActiveUpstreams = 0;
+    let releaseUpstreams!: () => void;
+    let upstreamCount = 0;
+    const upstreamBarrier = new Promise<void>((resolve) => {
+      releaseUpstreams = resolve;
+    });
+    const observedTokens: string[] = [];
+
+    selectChannelMock.mockImplementation(() => {
+      const selected = channels[selectIndex % channels.length]!;
+      selectIndex += 1;
+      return {
+        channel: { id: selected.id, routeId: 99 },
+        site: { name: 'same-site', url: 'https://same-site.example.com' },
+        account: { id: selected.id, username: selected.username },
+        tokenName: selected.username,
+        tokenValue: selected.tokenValue,
+        actualModel: 'upstream-gpt',
+      };
+    });
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      activeUpstreams += 1;
+      maxActiveUpstreams = Math.max(maxActiveUpstreams, activeUpstreams);
+      upstreamCount += 1;
+      const headers = new Headers(init?.headers);
+      observedTokens.push(headers.get('authorization') || '');
+      if (upstreamCount === 2) releaseUpstreams();
+      await upstreamBarrier;
+      activeUpstreams -= 1;
+      return new Response(JSON.stringify({
+        id: `chatcmpl-${observedTokens.length}`,
+        object: 'chat.completion',
+        model: 'upstream-gpt',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        payload: { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'one' }] },
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        payload: { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'two' }] },
+      }),
+    ]);
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(first.json()?.choices?.[0]?.message?.content).toBe('ok');
+    expect(second.json()?.choices?.[0]?.message?.content).toBe('ok');
+    expect(maxActiveUpstreams).toBe(2);
+    expect(observedTokens.sort()).toEqual(['Bearer sk-concurrent-a', 'Bearer sk-concurrent-b']);
+    expect(recordSuccessMock).toHaveBeenCalledTimes(2);
+    expect(recordFailureMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps two concurrent stream requests single-write while recording their final channels', async () => {
+    (config as any).disableCrossProtocolFallback = true;
+    const channels = [
+      { id: 51, tokenValue: 'sk-stream-a', username: 'stream-a' },
+      { id: 52, tokenValue: 'sk-stream-b', username: 'stream-b' },
+    ];
+    let selectIndex = 0;
+    let activeUpstreams = 0;
+    let maxActiveUpstreams = 0;
+    let releaseUpstreams!: () => void;
+    let upstreamCount = 0;
+    const upstreamBarrier = new Promise<void>((resolve) => {
+      releaseUpstreams = resolve;
+    });
+    const observedTokens: string[] = [];
+
+    selectChannelMock.mockImplementation(() => {
+      const selected = channels[selectIndex % channels.length]!;
+      selectIndex += 1;
+      return {
+        channel: { id: selected.id, routeId: 100 },
+        site: { name: 'same-stream-site', url: 'https://same-stream-site.example.com' },
+        account: { id: selected.id, username: selected.username },
+        tokenName: selected.username,
+        tokenValue: selected.tokenValue,
+        actualModel: 'upstream-gpt',
+      };
+    });
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      activeUpstreams += 1;
+      maxActiveUpstreams = Math.max(maxActiveUpstreams, activeUpstreams);
+      upstreamCount += 1;
+      const headers = new Headers(init?.headers);
+      observedTokens.push(headers.get('authorization') || '');
+      if (upstreamCount === 2) releaseUpstreams();
+      await upstreamBarrier;
+      activeUpstreams -= 1;
+      return new Response(JSON.stringify({
+        id: `chatcmpl-stream-${observedTokens.length}`,
+        object: 'chat.completion',
+        model: 'upstream-gpt',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'stream-ok' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        payload: { model: 'gpt-4o-mini', stream: true, messages: [{ role: 'user', content: 'one' }] },
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        payload: { model: 'gpt-4o-mini', stream: true, messages: [{ role: 'user', content: 'two' }] },
+      }),
+    ]);
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(first.headers['content-type']).toContain('text/event-stream');
+    expect(second.headers['content-type']).toContain('text/event-stream');
+    expect(first.body.match(/data: \[DONE\]/g)).toHaveLength(1);
+    expect(second.body.match(/data: \[DONE\]/g)).toHaveLength(1);
+    expect(maxActiveUpstreams).toBe(2);
+    expect(observedTokens.sort()).toEqual(['Bearer sk-stream-a', 'Bearer sk-stream-b']);
+    expect(recordSuccessMock).toHaveBeenCalledTimes(2);
+    expect(recordFailureMock).not.toHaveBeenCalled();
   });
 
   it('converts non-SSE upstream streaming responses into SSE events', async () => {

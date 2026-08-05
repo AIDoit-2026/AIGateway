@@ -19,10 +19,17 @@ status: in_progress
 
 ## A. 现状基线与复现
 
-- [ ] 梳理 Fastify、proxy-core、scheduler 和路由选择的正常日志来源，记录降噪前基线。
-- [ ] 为 `/api/accounts/verify-token` 建立测试矩阵：Session/API Key、普通平台/New-API、带/不带 platformUserId、超时、401/403、HTML challenge、空模型。
-- [ ] 增加同站点两个有效 API Key 的非流式/流式并发复现测试，覆盖首个成功、失败重试和 endpoint pool 场景。
-- [ ] 输出一次验证请求链路和重复响应排查结论；若未复现，记录证据并保留回归测试。
+- [x] 梳理 Fastify、proxy-core、scheduler 和路由选择的正常日志来源，记录降噪前基线。
+- [x] 为 `/api/accounts/verify-token` 建立测试矩阵：Session/API Key、普通平台/New-API、带/不带 platformUserId、超时、401/403、HTML challenge、空模型。
+- [x] 增加同站点两个有效 API Key 的非流式/流式并发复现测试，覆盖首个成功、失败重试和 endpoint pool 场景。
+- [x] 输出一次验证请求链路和重复响应排查结论；若未复现，记录证据并保留回归测试。
+
+### A 段验证记录
+
+- 基线来源：Fastify 适配层记录请求入口和异常；`accounts.ts` 记录 `verify-token` 关联 ID；平台适配器记录 `/api/user/self`、模型列表和诊断请求；`proxy-core` 的 `executeEndpointFlow()`、`sharedSurface.ts` 和协议 surface 记录 endpoint attempt、响应提交和最终 channel；scheduler 仅保留启动、配置切换和异常日志。
+- `verify-token` 矩阵：新增 `src/server/routes/api/accounts.verifyToken.matrix.test.ts`，覆盖 Session/API Key、`new-api`/`one-api`、有无 `platformUserId`、401/403、HTML challenge 和空模型；超时与诊断请求上限由 `accounts.verifyTokenShield.test.ts` 覆盖。
+- 并发复现：新增同站点双 API Key 的非流式和流式并发测试，使用活动上游请求屏障确认两个请求同时在途，并断言最终只各提交一次响应、分别使用两个 API Key。首个失败重试和 endpoint pool 由 `accounts.apiSite.test.ts`、`chat.siteApiEndpoint.test.ts`、`completions.siteApiEndpoint.test.ts` 及现有流式回归覆盖。
+- 排查结论：本地并发回归未复现重复响应、重复写入或错误切换 channel；保留上述并发测试和既有 response-owner/首字节边界测试作为回归证据。真实上游凭据未纳入测试，现场排查应使用脱敏 URL、关联 ID、状态码和响应摘要。
 
 ## B. 日志治理
 
