@@ -67,7 +67,7 @@ status: in_progress
 
 ## F. 验证与交付
 
-- [ ] 运行相关 server/web 单测和集成测试。
-- [ ] 运行 `npm run build`、`git diff --check`。
-- [ ] 运行 `npm run repo:drift-check`，处理架构边界和 schema 产物漂移。
+- [x] 运行相关 server/web 单测和集成测试。
+- [x] 运行 `npm run build`、`git diff --check`。
+- [x] 运行 `npm run repo:drift-check`，处理架构边界和 schema 产物漂移。
 - [x] 更新 `docs/operations.md` 或相关运维文档，补充日志字段、脱敏规则、验证失败排查和稳定优先参数说明。

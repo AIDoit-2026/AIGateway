@@ -1820,6 +1820,7 @@ describe('chat proxy stream behavior', () => {
 
   it('retries /v1/responses on upstream failure and records the final channel id', async () => {
     config.proxyMaxChannelAttempts = 2;
+    config.disableCrossProtocolFallback = true;
     shouldRetryProxyRequestMock.mockReturnValue(true);
 
     selectChannelMock.mockReturnValueOnce({
