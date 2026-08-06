@@ -1361,6 +1361,7 @@ export async function accountsRoutes(app: FastifyInstance) {
             .set({ status: nextStatus, updatedAt: new Date().toISOString() })
             .where(eq(schema.accounts.id, id))
             .run();
+          shouldRebuildRoutes = true;
         }
 
         successIds.push(id);

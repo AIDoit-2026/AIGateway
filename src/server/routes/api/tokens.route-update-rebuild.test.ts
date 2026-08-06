@@ -721,4 +721,41 @@ describe('PUT /api/routes/:id route rebuild', () => {
       },
     });
   });
+
+  it('reports site, API Key, and token disables as distinct effective channel states', async () => {
+    const seeded = await seedAccountWithToken('gpt-4.1-mini');
+    const route = await db.insert(schema.tokenRoutes).values({
+      modelPattern: 'gpt-4.1-mini',
+      enabled: true,
+    }).returning().get();
+    await db.insert(schema.routeChannels).values({
+      routeId: route.id,
+      accountId: seeded.account.id,
+      tokenId: seeded.token.id,
+      sourceModel: 'gpt-4.1-mini',
+      enabled: true,
+    }).run();
+    await db.update(schema.sites).set({ status: 'disabled' })
+      .where(eq(schema.sites.id, seeded.site.id)).run();
+    await db.update(schema.accounts).set({ status: 'disabled' })
+      .where(eq(schema.accounts.id, seeded.account.id)).run();
+    await db.update(schema.accountTokens).set({ enabled: false })
+      .where(eq(schema.accountTokens.id, seeded.token.id)).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/routes' });
+    expect(response.statusCode).toBe(200);
+    const listed = response.json() as Array<{ id: number; channels: Array<Record<string, unknown>> }>;
+    const channel = listed.find((item) => item.id === route.id)?.channels[0];
+    expect(channel).toMatchObject({
+      manualEnabled: true,
+      dependencyEnabled: false,
+      runtimeEnabled: true,
+      effectiveEnabled: false,
+    });
+    expect(channel?.disabledReasons).toEqual([
+      '站点状态=disabled',
+      'API Key/账号状态=disabled',
+      '账号令牌已禁用',
+    ]);
+  });
 });

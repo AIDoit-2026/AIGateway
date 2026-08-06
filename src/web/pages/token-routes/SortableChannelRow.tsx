@@ -71,7 +71,7 @@ export function SortableChannelRow({
 
   const rowStyle: CSSProperties = {
     transition: rowTransition || undefined,
-    opacity: dragging ? 0.92 : channel.enabled === false ? 0.56 : 1,
+    opacity: dragging ? 0.92 : channel.effectiveEnabled === false ? 0.56 : 1,
     display: 'grid',
     gridTemplateColumns: managementLocked || mobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) auto auto auto',
     alignItems: mobile ? 'stretch' : 'center',
@@ -105,7 +105,13 @@ export function SortableChannelRow({
     : null;
   const routeUnitMemberSummaryText = routeUnitMemberSummary ? `成员：${routeUnitMemberSummary}` : null;
   const cooldownRemaining = formatCooldownRemaining(channel.cooldownUntil);
+  const cooldownRestoresAt = cooldownRemaining && channel.cooldownUntil
+    ? new Date(channel.cooldownUntil).toLocaleTimeString()
+    : null;
   const consecutiveFailures = channel.consecutiveFailCount || 0;
+  const dependencyDisabledReasons = (channel.disabledReasons || []).filter((reason) => (
+    reason !== '通道已手动禁用' && reason !== '动态冷却中'
+  ));
 
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
@@ -160,6 +166,10 @@ export function SortableChannelRow({
                 {channel.site?.name || 'unknown'}
               </span>
 
+              {channel.manualEnabled === false ? (
+                <span className="badge badge-muted" style={{ fontSize: 10 }}>手动禁用</span>
+              ) : null}
+
               <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginLeft: 'auto' }}>
                 成功/失败 <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>{channel.successCount || 0}</span>
                 <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>/</span>
@@ -170,9 +180,12 @@ export function SortableChannelRow({
                   {consecutiveFailures} consecutive failures
                 </span>
               ) : null}
+              {dependencyDisabledReasons.map((reason) => (
+                <span key={reason} className="badge badge-warning" style={{ fontSize: 10 }}>{reason}</span>
+              ))}
               {cooldownRemaining ? (
                 <span className="badge badge-danger" style={{ fontSize: 10 }}>
-                  cooldown {cooldownRemaining}
+                  动态冷却 {cooldownRemaining}{cooldownRestoresAt ? `（${cooldownRestoresAt} 恢复）` : ''}
                 </span>
               ) : null}
             </div>
@@ -457,9 +470,13 @@ export function SortableChannelRow({
           </span>
         ) : null}
 
-        {channel.enabled === false ? (
-          <span className="badge badge-muted" style={{ fontSize: 10 }}>已禁用</span>
+        {channel.manualEnabled === false ? (
+          <span className="badge badge-muted" style={{ fontSize: 10 }}>手动禁用</span>
         ) : null}
+
+        {dependencyDisabledReasons.map((reason) => (
+          <span key={reason} className="badge badge-warning" style={{ fontSize: 10 }}>{reason}</span>
+        ))}
 
         {routeUnit ? (
           <>
@@ -538,7 +555,7 @@ export function SortableChannelRow({
           ) : null}
           {cooldownRemaining ? (
             <span className="badge badge-danger" style={{ fontSize: 10 }}>
-              cooldown {cooldownRemaining}
+              动态冷却 {cooldownRemaining}{cooldownRestoresAt ? `（${cooldownRestoresAt} 恢复）` : ''}
             </span>
           ) : null}
         </div>

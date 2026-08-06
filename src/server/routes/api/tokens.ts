@@ -14,6 +14,7 @@ import {
   type RouteRoutingStrategy,
 } from '../../services/routeRoutingStrategy.js';
 import { invalidateTokenRouterCache, matchesModelPattern, tokenRouter } from '../../services/tokenRouter.js';
+import { getRouteChannelAvailability } from '../../services/routeChannelAvailability.js';
 import { appendBackgroundTaskLog, startBackgroundTask } from '../../services/backgroundTaskService.js';
 import {
   clearRouteDecisionSnapshot,
@@ -714,8 +715,15 @@ async function fetchChannelsForRouteRows(
     const routeUnit = row.route_channels.oauthRouteUnitId
       ? routeUnitSummaries.get(row.route_channels.oauthRouteUnitId) || null
       : null;
+    const availability = getRouteChannelAvailability({
+      channel: row.route_channels,
+      account: row.accounts,
+      site: row.sites,
+      token: row.account_tokens,
+    });
     channelsByActualRouteId.get(routeId)!.push({
       ...row.route_channels,
+      ...availability,
       sourceModel: resolvedSourceModel || null,
       account: row.accounts,
       site: row.sites,
@@ -775,7 +783,7 @@ async function buildRouteChannelSummaryMap(routes: RouteRow[]): Promise<Map<numb
     const siteNames = new Set<string>();
     let enabledChannelCount = 0;
     for (const channel of channels) {
-      if (channel.enabled) enabledChannelCount += 1;
+      if (channel.effectiveEnabled) enabledChannelCount += 1;
       if (channel.site?.name) siteNames.add(channel.site.name);
     }
     summaryByRoute.set(route.id, {

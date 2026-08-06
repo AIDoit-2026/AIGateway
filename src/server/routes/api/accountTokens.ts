@@ -20,6 +20,7 @@ import { getCredentialModeFromExtraConfig, getProxyUrlFromExtraConfig, resolvePl
 import { startBackgroundTask } from '../../services/backgroundTaskService.js';
 import { withAccountProxyOverride } from '../../services/siteProxy.js';
 import { type ModelRefreshResult } from '../../services/modelService.js';
+import { invalidateTokenRouterCache } from '../../services/tokenRouter.js';
 import {
   type CoverageBatchRebuildResult,
   convergeAccountMutation,
@@ -755,6 +756,9 @@ export async function accountTokensRoutes(app: FastifyInstance) {
       }
     }
 
+    if (successIds.length > 0) {
+      invalidateTokenRouterCache();
+    }
     return {
       success: true,
       successIds,
@@ -841,6 +845,7 @@ export async function accountTokensRoutes(app: FastifyInstance) {
       return reply.code(500).send({ success: false, message: '更新失败' });
     }
 
+    invalidateTokenRouterCache();
     return { success: true, token: latest };
   });
 

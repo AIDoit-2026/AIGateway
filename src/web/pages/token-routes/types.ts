@@ -38,6 +38,12 @@ export type RouteChannel = {
   priority: number;
   weight: number;
   enabled: boolean;
+  manualEnabled?: boolean;
+  dependencyEnabled?: boolean;
+  runtimeEnabled?: boolean;
+  effectiveEnabled?: boolean;
+  disabledReasons?: string[];
+  cooldownReason?: string | null;
   manualOverride: boolean;
   successCount: number;
   failCount: number;
@@ -46,6 +52,7 @@ export type RouteChannel = {
   cooldownUntil?: string | null;
   account?: {
     username: string | null;
+    status?: string | null;
     accessToken?: string | null;
     extraConfig?: string | null;
     credentialMode?: string | null;
@@ -54,6 +61,7 @@ export type RouteChannel = {
     id: number;
     name: string | null;
     platform: string | null;
+    status?: string | null;
   };
   token?: {
     id: number;

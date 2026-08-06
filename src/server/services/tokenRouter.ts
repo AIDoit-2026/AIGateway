@@ -11,6 +11,17 @@ import { proxyChannelCoordinator, type ProxyChannelLoadSnapshot } from './proxyC
 import { RETRYABLE_TIMEOUT_PATTERNS } from './proxyRetryPolicy.js';
 import { type DownstreamRoutingPolicy, EMPTY_DOWNSTREAM_ROUTING_POLICY } from './downstreamPolicyTypes.js';
 import { isUsableAccountToken } from './accountTokenService.js';
+import {
+  clearRouteChannelRuntimeState,
+  getRouteChannelRuntimeState,
+  getRouteChannelRuntimeFailureCount,
+  setRouteChannelRuntimeFailureCount,
+  setRouteChannelRuntimeState,
+  getRouteUnitMemberRuntimeState,
+  setRouteUnitMemberRuntimeState,
+  getRouteUnitMemberRuntimeFailureCount,
+  setRouteUnitMemberRuntimeFailureCount,
+} from './routeChannelRuntimeState.js';
 import { getOauthInfoFromAccount } from './oauth/oauthAccount.js';
 import { parseCodexQuotaResetHint } from './oauth/quota.js';
 import {
@@ -1529,7 +1540,7 @@ function isOauthRouteUnitMemberCoolingDown(
   member: typeof schema.oauthRouteUnitMembers.$inferSelect,
   nowIso: string,
 ): boolean {
-  return !!member.cooldownUntil && member.cooldownUntil > nowIso;
+  return !!getRouteUnitMemberRuntimeState(member.id, Date.parse(nowIso));
 }
 
 function compareStableFirstCandidateOrder(left: RouteChannelCandidate, right: RouteChannelCandidate): number {
@@ -2300,6 +2311,8 @@ export class TokenRouter {
           cooldownLevel: 0,
           updatedAt: nowIso,
         }).where(eq(schema.oauthRouteUnitMembers.id, memberRow.member.id)).run();
+        setRouteUnitMemberRuntimeState(memberRow.member.id, null);
+        setRouteUnitMemberRuntimeFailureCount(memberRow.member.id, 0);
         recordSiteRuntimeSuccess(memberRow.account.siteId, latencyMs, modelName);
       } else {
         recordSiteRuntimeSuccess(account.siteId, latencyMs, modelName);
@@ -2319,6 +2332,7 @@ export class TokenRouter {
       consecutiveFailCount: 0,
       cooldownLevel: 0,
     }).where(eq(schema.routeChannels.id, channelId)).run();
+    clearRouteChannelRuntimeState([channelId]);
 
     patchCachedChannel(channelId, (channel) => {
       channel.successCount = nextSuccessCount;
@@ -2372,6 +2386,8 @@ export class TokenRouter {
           cooldownLevel: 0,
           updatedAt: nowIso,
         }).where(eq(schema.oauthRouteUnitMembers.id, memberRow.member.id)).run();
+        setRouteUnitMemberRuntimeState(memberRow.member.id, null);
+        setRouteUnitMemberRuntimeFailureCount(memberRow.member.id, 0);
         recordSiteRuntimeSuccess(memberRow.account.siteId, latencyMs, modelName);
       } else {
         recordSiteRuntimeSuccess(account.siteId, latencyMs, modelName);
@@ -2383,6 +2399,7 @@ export class TokenRouter {
         consecutiveFailCount: 0,
         cooldownLevel: 0,
       }).where(eq(schema.routeChannels.id, channelId)).run();
+      clearRouteChannelRuntimeState([channelId]);
       patchCachedChannel(channelId, (channel) => {
         channel.cooldownUntil = null;
         channel.lastFailAt = null;
@@ -2415,6 +2432,7 @@ export class TokenRouter {
           channel.cooldownLevel = 0;
         });
       }
+      clearRouteChannelRuntimeState(affectedChannelIds);
     } else if (affectedChannelIds.length > 1) {
       const scopedRows = await db.select({
         id: schema.routeChannels.id,
@@ -2451,6 +2469,7 @@ export class TokenRouter {
             channel.cooldownLevel = 0;
           });
         }
+        clearRouteChannelRuntimeState(siblingIdsToReset);
       }
     }
 
@@ -2486,6 +2505,7 @@ export class TokenRouter {
       cooldownLevel: 0,
       cooldownUntil: null,
     }).where(inArray(schema.routeChannels.id, normalizedChannelIds)).run();
+    clearRouteChannelRuntimeState(normalizedChannelIds);
 
     if (clearRuntimeHealthStatesForChannels(runtimeHealthRows)) {
       await persistSiteRuntimeHealthState();
@@ -2540,7 +2560,7 @@ export class TokenRouter {
         const shortWindowLimitCooldownUntil = resolveShortWindowLimitCooldown(memberRow.account, normalizedContext, nowMs);
         const failCount = shortWindowLimitCooldownUntil ? 0 : ((memberRow.member.failCount ?? 0) + 1);
         let cooldownUntil: string | null = null;
-        let consecutiveFailCount = Math.max(0, memberRow.member.consecutiveFailCount ?? 0) + 1;
+        let consecutiveFailCount = getRouteUnitMemberRuntimeFailureCount(memberRow.member.id) + 1;
         let cooldownLevel = 0;
 
         if (shortWindowLimitCooldownUntil) {
@@ -2560,6 +2580,23 @@ export class TokenRouter {
           cooldownUntil,
           updatedAt: nowIso,
         }).where(eq(schema.oauthRouteUnitMembers.id, memberRow.member.id)).run();
+        if (cooldownUntil) {
+          setRouteUnitMemberRuntimeFailureCount(memberRow.member.id, 0);
+          const runtimeState = {
+            cooldownUntil,
+            lastFailureAt: nowIso,
+            consecutiveFailureCount: consecutiveFailCount,
+            reason: normalizedContext.errorText || '路由池成员连续失败',
+          };
+          setRouteChannelRuntimeState([channelId], {
+            ...runtimeState,
+          });
+          setRouteUnitMemberRuntimeState(memberRow.member.id, runtimeState);
+        } else {
+          setRouteUnitMemberRuntimeFailureCount(memberRow.member.id, consecutiveFailCount);
+          clearRouteChannelRuntimeState([channelId]);
+          setRouteUnitMemberRuntimeState(memberRow.member.id, null);
+        }
         recordSiteRuntimeFailure(memberRow.account.siteId, normalizedContext, nowMs);
         invalidateRouteScopedCache(route.id);
         return;
@@ -2572,7 +2609,7 @@ export class TokenRouter {
       ? await loadCredentialScopedChannelIds(ch, account.id)
       : [channelId];
     let cooldownUntil: string | null = null;
-    let consecutiveFailCount = Math.max(0, ch.consecutiveFailCount ?? 0) + 1;
+    let consecutiveFailCount = getRouteChannelRuntimeFailureCount(channelId) + 1;
     let cooldownLevel = 0;
 
     if (shortWindowLimitCooldownUntil) {
@@ -2600,6 +2637,18 @@ export class TokenRouter {
         channel.consecutiveFailCount = consecutiveFailCount;
         channel.cooldownLevel = cooldownLevel;
       });
+    }
+    if (cooldownUntil) {
+      setRouteChannelRuntimeFailureCount(affectedChannelIds, 0);
+      setRouteChannelRuntimeState(affectedChannelIds, {
+        cooldownUntil,
+        lastFailureAt: nowIso,
+        consecutiveFailureCount: consecutiveFailCount,
+        reason: normalizedContext.errorText || '通道连续失败',
+      });
+    } else {
+      setRouteChannelRuntimeFailureCount(affectedChannelIds, consecutiveFailCount);
+      setRouteChannelRuntimeState(affectedChannelIds, null);
     }
 
     recordSiteRuntimeFailure(account.siteId, normalizedContext, nowMs);
@@ -3066,7 +3115,7 @@ export class TokenRouter {
     const tokenValue = this.resolveChannelTokenValue(candidate);
     if (!tokenValue) reasonParts.push('令牌不可用');
 
-    if (candidate.channel.cooldownUntil && candidate.channel.cooldownUntil > nowIso) {
+    if (getRouteChannelRuntimeState(candidate.channel.id, Date.parse(nowIso))) {
       reasonParts.push('冷却中');
     }
 
