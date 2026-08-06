@@ -11,6 +11,7 @@ export type RouteGroupingColumnCompatibilitySpec = {
   table: 'token_routes' | 'route_channels';
   column: string;
   addSql: Record<RouteGroupingSchemaDialect, string>;
+  normalizeSql?: Record<RouteGroupingSchemaDialect, string>;
 };
 
 export type RouteGroupingTableCompatibilitySpec = {
@@ -71,6 +72,11 @@ export const ROUTE_GROUPING_COLUMN_COMPATIBILITY_SPECS: RouteGroupingColumnCompa
       sqlite: 'ALTER TABLE token_routes ADD COLUMN routing_strategy text DEFAULT \'stable_first\';',
       mysql: 'ALTER TABLE `token_routes` ADD COLUMN `routing_strategy` VARCHAR(32) NULL DEFAULT \'stable_first\'',
       postgres: 'ALTER TABLE "token_routes" ADD COLUMN "routing_strategy" TEXT DEFAULT \'stable_first\'',
+    },
+    normalizeSql: {
+      sqlite: "UPDATE token_routes SET routing_strategy = 'stable_first' WHERE routing_strategy IS NULL OR LOWER(TRIM(routing_strategy)) <> 'stable_first'",
+      mysql: "UPDATE token_routes SET routing_strategy = 'stable_first' WHERE routing_strategy IS NULL OR LOWER(TRIM(routing_strategy)) <> 'stable_first'",
+      postgres: "UPDATE token_routes SET routing_strategy = 'stable_first' WHERE routing_strategy IS NULL OR LOWER(TRIM(routing_strategy)) <> 'stable_first'",
     },
   },
   {
@@ -160,6 +166,7 @@ async function executeAddColumn(inspector: RouteGroupingSchemaInspector, sqlText
 
 export async function ensureRouteGroupingSchemaCompatibility(inspector: RouteGroupingSchemaInspector): Promise<void> {
   const tableExistsCache = new Map<string, boolean>();
+  let hasRoutingStrategy = false;
 
   for (const spec of ROUTE_GROUPING_TABLE_COMPATIBILITY_SPECS) {
     const hasTable = await inspector.tableExists(spec.table);
@@ -183,15 +190,20 @@ export async function ensureRouteGroupingSchemaCompatibility(inspector: RouteGro
       continue;
     }
 
-    const hasColumn = await inspector.columnExists(spec.table, spec.column);
+    let hasColumn = await inspector.columnExists(spec.table, spec.column);
     if (!hasColumn) {
       await executeAddColumn(inspector, spec.addSql[inspector.dialect]);
+      hasColumn = true;
+    }
+
+    if (spec.table === 'token_routes' && spec.column === 'routing_strategy') {
+      hasRoutingStrategy = hasColumn;
     }
   }
 
-  if (tableExistsCache.get('token_routes') && await inspector.columnExists('token_routes', 'routing_strategy')) {
-    await inspector.execute(
-      "UPDATE token_routes SET routing_strategy = 'stable_first' WHERE routing_strategy IS NULL OR LOWER(TRIM(routing_strategy)) <> 'stable_first'",
-    );
+  const routingStrategySpec = ROUTE_GROUPING_COLUMN_COMPATIBILITY_SPECS
+    .find((spec) => spec.table === 'token_routes' && spec.column === 'routing_strategy');
+  if (hasRoutingStrategy && routingStrategySpec?.normalizeSql) {
+    await inspector.execute(routingStrategySpec.normalizeSql[inspector.dialect]);
   }
 }

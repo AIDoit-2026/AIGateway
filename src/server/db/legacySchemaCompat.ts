@@ -118,7 +118,10 @@ const LEGACY_COMPAT_INDEXES = new Set([
 ]);
 
 const LEGACY_COMPAT_UPDATES = new Set(
-  SITE_COLUMN_COMPATIBILITY_SPECS
+  [
+    ...SITE_COLUMN_COMPATIBILITY_SPECS,
+    ...ROUTE_GROUPING_COLUMN_COMPATIBILITY_SPECS,
+  ]
     .flatMap((spec) => spec.normalizeSql ? Object.values(spec.normalizeSql) : [])
     .map((sqlText) => normalizeSqlText(sqlText)),
 );
