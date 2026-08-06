@@ -1,6 +1,6 @@
 {
   "name": "aigateway",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "AIGateway provides meta-layer management and a unified proxy for AI API aggregation platforms",
   "main": "dist/desktop/main.js",
   "keywords": [
