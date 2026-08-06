@@ -1033,4 +1033,52 @@ describe('databaseMigrationService', () => {
     expect(migratedSettingKeys).not.toContain('db_url');
     expect(migratedSettingKeys).not.toContain('db_ssl');
   });
+
+  it('writes the target runtime database config when migration is preparing the target database', () => {
+    const statements = __databaseMigrationServiceTestUtils.buildStatements({
+      version: 'test',
+      timestamp: Date.now(),
+      accounts: {
+        sites: [],
+        siteAnnouncements: [],
+        siteDisabledModels: [],
+        accounts: [],
+        accountTokens: [],
+        checkinLogs: [],
+        modelAvailability: [],
+        tokenModelAvailability: [],
+        tokenRoutes: [],
+        routeChannels: [],
+        routeGroupSources: [],
+        proxyLogs: [],
+        proxyVideoTasks: [],
+        proxyFiles: [],
+        downstreamApiKeys: [],
+        events: [],
+      },
+      preferences: {
+        settings: [
+          { key: 'db_type', value: 'sqlite' },
+          { key: 'db_url', value: '/app/data/hub.db' },
+          { key: 'db_ssl', value: false },
+        ],
+      },
+    } as any, undefined, {
+      runtimeDatabaseConfig: {
+        dialect: 'mysql',
+        connectionString: 'mysql://user:secret@db.example.com:3306/metapi',
+        ssl: true,
+      },
+    });
+
+    const migratedSettings = new Map(
+      statements
+        .filter((statement) => statement.table === 'settings')
+        .map((statement) => [statement.values[0], statement.values[1]]),
+    );
+
+    expect(migratedSettings.get('db_type')).toBe(JSON.stringify('mysql'));
+    expect(migratedSettings.get('db_url')).toBe(JSON.stringify('mysql://user:secret@db.example.com:3306/metapi'));
+    expect(migratedSettings.get('db_ssl')).toBe(JSON.stringify(true));
+  });
 });

@@ -89,6 +89,9 @@ interface InsertStatement {
 
 const DIALECTS: MigrationDialect[] = ['sqlite', 'mysql', 'postgres'];
 const RUNTIME_DATABASE_SETTING_KEYS = new Set(['db_type', 'db_url', 'db_ssl']);
+type BuildStatementsOptions = {
+  runtimeDatabaseConfig?: Pick<NormalizedDatabaseMigrationInput, 'dialect' | 'connectionString' | 'ssl'>;
+};
 type SchemaContractShape = {
   tables: Record<string, {
     columns: Record<string, {
@@ -317,6 +320,7 @@ async function clearTargetData(client: SqlClient): Promise<void> {
 function buildStatements(
   snapshot: BackupSnapshot,
   contract: SchemaContractShape = schemaContract,
+  options: BuildStatementsOptions = {},
 ): InsertStatement[] {
   const statements: InsertStatement[] = [];
 
@@ -716,6 +720,22 @@ function buildStatements(
     });
   }
 
+  if (options.runtimeDatabaseConfig) {
+    const runtimeSettings: Array<{ key: string; value: unknown }> = [
+      { key: 'db_type', value: options.runtimeDatabaseConfig.dialect },
+      { key: 'db_url', value: options.runtimeDatabaseConfig.connectionString },
+      { key: 'db_ssl', value: options.runtimeDatabaseConfig.ssl },
+    ];
+
+    for (const row of runtimeSettings) {
+      statements.push({
+        table: 'settings',
+        columns: ['key', 'value'],
+        values: [row.key, toJsonString(row.value)],
+      });
+    }
+  }
+
   return statements;
 }
 
@@ -796,7 +816,7 @@ export async function migrateCurrentDatabase(input: DatabaseMigrationInput): Pro
       if (normalized.overwrite) {
         await clearTargetData(client);
       }
-      await insertAllRows(client, buildStatements(snapshot));
+      await insertAllRows(client, buildStatements(snapshot, schemaContract, { runtimeDatabaseConfig: normalized }));
       await syncPostgresSequences(client);
       await client.commit();
     } catch (error) {
@@ -830,7 +850,8 @@ export async function migrateCurrentDatabase(input: DatabaseMigrationInput): Pro
       proxyFiles: snapshot.accounts.proxyFiles.length,
       downstreamApiKeys: snapshot.accounts.downstreamApiKeys.length,
       events: snapshot.accounts.events.length,
-      settings: snapshot.preferences.settings.length,
+      settings: snapshot.preferences.settings.filter((row) => !RUNTIME_DATABASE_SETTING_KEYS.has(row.key)).length
+        + RUNTIME_DATABASE_SETTING_KEYS.size,
       routeGroupSources: snapshot.accounts.routeGroupSources.length,
     },
   };
