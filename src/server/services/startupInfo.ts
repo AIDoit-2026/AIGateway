@@ -3,6 +3,7 @@ type StartupSummaryInput = {
   host: string;
   authToken: string;
   proxyToken: string;
+  database?: StartupDatabaseInfo;
 };
 
 type StartupEndpoints = {
@@ -12,6 +13,12 @@ type StartupEndpoints = {
   proxyApiExample: string;
   adminApiCurl: string;
   proxyApiCurl: string;
+};
+
+type StartupDatabaseInfo = {
+  dialect: string;
+  connectionString?: string;
+  ssl?: boolean;
 };
 
 function resolveDisplayHost(host: string): string {
@@ -37,10 +44,33 @@ export function buildStartupEndpoints(input: StartupSummaryInput): StartupEndpoi
   };
 }
 
+function maskConnectionString(connectionString: string): string {
+  try {
+    const parsed = new URL(connectionString);
+    if (parsed.password) {
+      parsed.password = '***';
+    }
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
+export function buildStartupDatabaseLine(input: StartupDatabaseInfo): string {
+  const dialect = (input.dialect || 'unknown').trim() || 'unknown';
+  const connection = (input.connectionString || '').trim();
+  const displayConnection = dialect === 'sqlite' && !connection
+    ? '(default sqlite path)'
+    : (connection ? maskConnectionString(connection) : '(empty)');
+  const sslLabel = input.ssl ? ' ssl=on' : ' ssl=off';
+
+  return `Database: ${dialect} ${displayConnection}${dialect === 'sqlite' ? '' : sslLabel}`;
+}
+
 export function buildStartupSummaryLines(input: StartupSummaryInput): string[] {
   const endpoints = buildStartupEndpoints(input);
 
-  return [
+  const lines = [
     `metapi running on ${input.host}:${input.port}`,
     `Dashboard: ${endpoints.adminDashboardUrl}`,
     `Admin API: ${endpoints.adminApiExample}`,
@@ -48,4 +78,10 @@ export function buildStartupSummaryLines(input: StartupSummaryInput): string[] {
     `Admin curl: ${endpoints.adminApiCurl}`,
     `Proxy curl: ${endpoints.proxyApiCurl}`,
   ];
+
+  if (input.database) {
+    lines.splice(1, 0, buildStartupDatabaseLine(input.database));
+  }
+
+  return lines;
 }

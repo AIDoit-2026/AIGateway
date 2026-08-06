@@ -300,6 +300,11 @@ try {
     host: config.listenHost,
     authToken: config.authToken,
     proxyToken: config.proxyToken,
+    database: {
+      dialect: runtimeDbDialect,
+      connectionString: config.dbUrl,
+      ssl: config.dbSsl,
+    },
   });
   for (const line of summaryLines) {
     console.log(line);
