@@ -1,5 +1,5 @@
 import { and, eq, lt } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { db, runtimeDbDialect, schema } from "../db/index.js";
 import type {
   PersistedSnapshotRecord,
   SnapshotPersistenceAdapter,
@@ -81,14 +81,36 @@ export async function writeAdminSnapshot<T>(
     updatedAt: new Date().toISOString(),
   };
 
-  await (db
-    .insert(schema.adminSnapshots)
-    .values(values) as any)
+  const existing = runtimeDbDialect === 'mysql'
+    ? await db
+      .select({ id: schema.adminSnapshots.id })
+      .from(schema.adminSnapshots)
+      .where(buildSnapshotWhere(identity))
+      .get()
+    : null;
+
+  if (existing) {
+    await db.update(schema.adminSnapshots)
+      .set({
+        payload: values.payload,
+        generatedAt: values.generatedAt,
+        expiresAt: values.expiresAt,
+        staleUntil: values.staleUntil,
+        updatedAt: values.updatedAt,
+      })
+      .where(eq(schema.adminSnapshots.id, existing.id))
+      .run();
+    return;
+  }
+
+  if (runtimeDbDialect === 'mysql') {
+    await db.insert(schema.adminSnapshots).values(values).run();
+    return;
+  }
+
+  await (db.insert(schema.adminSnapshots).values(values) as any)
     .onConflictDoUpdate({
-      target: [
-        schema.adminSnapshots.namespace,
-        schema.adminSnapshots.snapshotKey,
-      ],
+      target: [schema.adminSnapshots.namespace, schema.adminSnapshots.snapshotKey],
       set: {
         payload: values.payload,
         generatedAt: values.generatedAt,
