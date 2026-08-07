@@ -36,6 +36,51 @@ function buildChannel(overrides: Partial<RouteChannel> = {}): RouteChannel {
 }
 
 describe('SortableChannelRow layering', () => {
+  it('hides the selection probability and shows the channel runtime status', () => {
+    const available = create(
+      <DndContext>
+        <SortableContext items={[301]} strategy={verticalListSortingStrategy}>
+          <SortableChannelRow
+            channel={buildChannel()}
+            isExactRoute
+            loadingDecision={false}
+            isSavingPriority={false}
+            tokenOptions={[]}
+            activeTokenId={0}
+            isUpdatingToken={false}
+            onTokenDraftChange={vi.fn()}
+            onSaveToken={vi.fn()}
+            onDeleteChannel={vi.fn()}
+            onToggleEnabled={vi.fn()}
+          />
+        </SortableContext>
+      </DndContext>,
+    );
+    const cooling = create(
+      <DndContext>
+        <SortableContext items={[301]} strategy={verticalListSortingStrategy}>
+          <SortableChannelRow
+            channel={buildChannel({ cooldownUntil: '2099-01-01T00:00:00.000Z' })}
+            isExactRoute
+            loadingDecision={false}
+            isSavingPriority={false}
+            tokenOptions={[]}
+            activeTokenId={0}
+            isUpdatingToken={false}
+            onTokenDraftChange={vi.fn()}
+            onSaveToken={vi.fn()}
+            onDeleteChannel={vi.fn()}
+            onToggleEnabled={vi.fn()}
+          />
+        </SortableContext>
+      </DndContext>,
+    );
+
+    expect(JSON.stringify(available.toJSON())).toContain('可用');
+    expect(JSON.stringify(cooling.toJSON())).toContain('冷却至');
+    expect(JSON.stringify(cooling.toJSON())).not.toContain('选中概率');
+  });
+
   it('does not force a base z-index on desktop rows when they are not being dragged', () => {
     const channel = buildChannel();
     const root = create(

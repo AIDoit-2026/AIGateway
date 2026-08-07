@@ -1562,19 +1562,6 @@ export default function TokenRoutes() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderLeft: '1px solid var(--color-border)', paddingLeft: 8 }}>
           <button
-            onClick={handleRefreshRouteDecisions}
-            disabled={loadingDecision}
-            className="btn btn-ghost"
-            style={{ border: '1px solid var(--color-border)', padding: '7px 12px' }}
-          >
-            {loadingDecision ? (
-              <><span className="spinner spinner-sm" /> {tr('刷新中...')}</>
-            ) : (
-              tr('刷新选中概率')
-            )}
-          </button>
-
-          <button
             onClick={handleRebuild}
             disabled={rebuilding}
             className="btn btn-ghost"

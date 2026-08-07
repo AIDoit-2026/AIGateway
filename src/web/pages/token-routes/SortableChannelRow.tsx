@@ -7,7 +7,7 @@ import {
   describeTokenBinding,
   resolveTokenBindingConnectionMode,
 } from './tokenBindingPresentation.js';
-import { formatCooldownRemaining, getChannelDecisionState, getPriorityTagStyle, getProbabilityColor } from './utils.js';
+import { formatCooldownRemaining, getPriorityTagStyle } from './utils.js';
 
 function getRouteUnitStrategyLabel(strategy: string | null | undefined): string {
   return strategy === 'stick_until_unavailable' ? '单个用到不可用再切' : '轮询';
@@ -26,9 +26,6 @@ export function SortableChannelRow({
   dragging = false,
   dragHandleProps,
   dragHandleRef,
-  decisionCandidate,
-  isExactRoute,
-  loadingDecision,
   isSavingPriority,
   readOnly = false,
   channelManagementDisabled = false,
@@ -87,7 +84,6 @@ export function SortableChannelRow({
       : '0 10px 22px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.7)',
   };
 
-  const decisionState = getChannelDecisionState(decisionCandidate, channel, isExactRoute, loadingDecision);
   const tokenBinding = describeTokenBinding(
     tokenOptions,
     activeTokenId,
@@ -106,7 +102,7 @@ export function SortableChannelRow({
   const routeUnitMemberSummaryText = routeUnitMemberSummary ? `成员：${routeUnitMemberSummary}` : null;
   const cooldownRemaining = formatCooldownRemaining(channel.cooldownUntil);
   const cooldownRestoresAt = cooldownRemaining && channel.cooldownUntil
-    ? new Date(channel.cooldownUntil).toLocaleTimeString()
+    ? new Date(channel.cooldownUntil).toLocaleString()
     : null;
   const consecutiveFailures = channel.consecutiveFailCount || 0;
   const dependencyDisabledReasons = (channel.disabledReasons || []).filter((reason) => (
@@ -183,11 +179,6 @@ export function SortableChannelRow({
               {dependencyDisabledReasons.map((reason) => (
                 <span key={reason} className="badge badge-warning" style={{ fontSize: 10 }}>{reason}</span>
               ))}
-              {cooldownRemaining ? (
-                <span className="badge badge-danger" style={{ fontSize: 10 }}>
-                  动态冷却 {cooldownRemaining}{cooldownRestoresAt ? `（${cooldownRestoresAt} 恢复）` : ''}
-                </span>
-              ) : null}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
@@ -266,40 +257,9 @@ export function SortableChannelRow({
             ) : null}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>选中概率</span>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 96 }}>
-                <div
-                  data-tooltip={suppressTooltips ? undefined : (decisionState.probability <= 0 ? decisionState.reasonText : undefined)}
-                  style={{
-                    width: 60,
-                    height: 4,
-                    background: 'color-mix(in srgb, var(--color-border) 88%, white 12%)',
-                    borderRadius: 999,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${Math.max(0, Math.min(100, decisionState.probability))}%`,
-                      height: '100%',
-                      background: getProbabilityColor(decisionState.probability),
-                      borderRadius: 999,
-                      transition: 'width 0.24s ease, background-color 0.18s ease',
-                    }}
-                  />
-                </div>
-                <span
-                  data-tooltip={suppressTooltips ? undefined : (decisionState.probability <= 0 ? decisionState.reasonText : undefined)}
-                  style={{
-                    fontSize: 11,
-                    color: decisionState.probability > 0 ? 'var(--color-text-secondary)' : decisionState.reasonColor,
-                    fontVariantNumeric: 'tabular-nums',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {decisionState.probability.toFixed(1)}%
-                </span>
-              </div>
+              <span style={{ fontSize: 11, color: cooldownRestoresAt ? 'var(--color-text-muted)' : 'var(--color-success)', whiteSpace: 'nowrap' }}>
+                {cooldownRestoresAt ? `冷却至 ${cooldownRestoresAt}` : '可用'}
+              </span>
 
               {!managementLocked && (
                 <button
@@ -507,40 +467,9 @@ export function SortableChannelRow({
         ) : null}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', marginTop: mobile ? 0 : 1, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>选中概率</span>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 96 }}>
-            <div
-              data-tooltip={suppressTooltips ? undefined : (decisionState.probability <= 0 ? decisionState.reasonText : undefined)}
-              style={{
-                width: 60,
-                height: 4,
-                background: 'color-mix(in srgb, var(--color-border) 88%, white 12%)',
-                borderRadius: 999,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  width: `${Math.max(0, Math.min(100, decisionState.probability))}%`,
-                  height: '100%',
-                  background: getProbabilityColor(decisionState.probability),
-                  borderRadius: 999,
-                  transition: 'width 0.24s ease, background-color 0.18s ease',
-                }}
-              />
-            </div>
-            <span
-              data-tooltip={suppressTooltips ? undefined : (decisionState.probability <= 0 ? decisionState.reasonText : undefined)}
-              style={{
-                fontSize: 11,
-                color: decisionState.probability > 0 ? 'var(--color-text-secondary)' : decisionState.reasonColor,
-                fontVariantNumeric: 'tabular-nums',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {decisionState.probability.toFixed(1)}%
-            </span>
-          </div>
+          <span style={{ fontSize: 11, color: cooldownRestoresAt ? 'var(--color-text-muted)' : 'var(--color-success)', whiteSpace: 'nowrap' }}>
+            {cooldownRestoresAt ? `冷却至 ${cooldownRestoresAt}` : '可用'}
+          </span>
 
           <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>成功/失败</span>
           <span style={{ fontSize: 11 }}>
@@ -551,11 +480,6 @@ export function SortableChannelRow({
           {consecutiveFailures > 0 ? (
             <span className="badge badge-warning" style={{ fontSize: 10 }}>
               {consecutiveFailures} consecutive failures
-            </span>
-          ) : null}
-          {cooldownRemaining ? (
-            <span className="badge badge-danger" style={{ fontSize: 10 }}>
-              动态冷却 {cooldownRemaining}{cooldownRestoresAt ? `（${cooldownRestoresAt} 恢复）` : ''}
             </span>
           ) : null}
         </div>

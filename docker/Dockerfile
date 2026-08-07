@@ -17,7 +17,8 @@ RUN apt-get update \
 ENV PYTHON=/usr/bin/python3
 
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm \
+ npm ci --ignore-scripts --no-audit --no-fund
 RUN npm rebuild esbuild sharp better-sqlite3 --no-audit --no-fund
 
 COPY . .
