@@ -44,16 +44,6 @@ function walkRecords(value: unknown, visitor: (item: Record<string, unknown>) =>
   }
 }
 
-function validateExternalPreviousResponseId(body: Record<string, unknown>): ResponsesPreflightResult {
-  const previousResponseId = asTrimmedString(body.previous_response_id);
-  if (!previousResponseId) return { ok: true };
-
-  const message = previousResponseId.startsWith('msg_')
-    ? 'previous_response_id must be a response id beginning with resp_; message ids like msg_* are not valid, and HTTP /v1/responses does not support continuation chaining. Use Responses WebSocket v2 for function-call follow-up turns.'
-    : 'HTTP /v1/responses does not support user-supplied previous_response_id continuation chaining. Use Responses WebSocket v2 for follow-up turns.';
-  return invalidRequest(message);
-}
-
 function validateFunctionCallOutputs(
   body: Record<string, unknown>,
   options: { allowContinuationToolOutput?: boolean } = {},
@@ -106,9 +96,8 @@ export function validateExternalResponsesHttpRequest(
   body: Record<string, unknown>,
   options: { allowContinuationToolOutput?: boolean } = {},
 ): ResponsesPreflightResult {
-  const previousResponseResult = validateExternalPreviousResponseId(body);
-  if (!previousResponseResult.ok) return previousResponseResult;
-
+  // previous_response_id is forwarded verbatim: the upstream decides whether
+  // the continuation id is resolvable, matching direct-connection behavior.
   const functionCallOutputResult = validateFunctionCallOutputs(body, options);
   if (!functionCallOutputResult.ok) return functionCallOutputResult;
 

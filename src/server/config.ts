@@ -134,7 +134,10 @@ export function buildConfig(env: NodeJS.ProcessEnv) {
       Math.max(1, Math.trunc(parseNumber(env.TOKEN_ROUTER_FAILURE_COOLDOWN_MINUTES, 10))),
     ),
     tokenRouterCacheTtlMs: Math.max(100, Math.trunc(parseNumber(env.TOKEN_ROUTER_CACHE_TTL_MS, 1_500))),
-    proxyMaxChannelAttempts: Math.max(1, Math.trunc(parseNumber(env.PROXY_MAX_CHANNEL_ATTEMPTS, 3))),
+    // Default to a single channel attempt: the proxy returns upstream failures
+    // to the client immediately and lets the client decide whether to retry,
+    // instead of silently re-sending the same prompt (and burning tokens).
+    proxyMaxChannelAttempts: Math.max(1, Math.trunc(parseNumber(env.PROXY_MAX_CHANNEL_ATTEMPTS, 1))),
     proxyStickySessionEnabled: parseBoolean(env.PROXY_STICKY_SESSION_ENABLED, true),
     proxyStickySessionTtlMs: Math.max(30_000, Math.trunc(parseNumber(env.PROXY_STICKY_SESSION_TTL_MS, 30 * 60 * 1000))),
     proxySessionChannelConcurrencyLimit: Math.max(0, Math.trunc(parseNumber(env.PROXY_SESSION_CHANNEL_CONCURRENCY_LIMIT, 2))),

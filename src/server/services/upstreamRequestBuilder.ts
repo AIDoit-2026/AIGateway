@@ -34,6 +34,8 @@ function resolveRequestedModelForPayloadRules(input: {
   openaiBody: Record<string, unknown>;
   claudeOriginalBody?: Record<string, unknown>;
   responsesOriginalBody?: Record<string, unknown>;
+  /** Keep a Responses payload transparent for native new-api upstreams. */
+  preserveResponsesBody?: boolean;
 }): string {
   return (
     asTrimmedString(input.responsesOriginalBody?.model)
@@ -661,7 +663,9 @@ export function buildUpstreamEndpointRequest(input: {
         }
         : convertOpenAiBodyToResponsesBodyViaTransformer(openaiBody, input.modelName, input.stream)
     );
-    const sanitizedResponsesBody = sanitizeResponsesBodyForProxyViaTransformer(rawBody, input.modelName, input.stream);
+    const sanitizedResponsesBody = input.preserveResponsesBody
+      ? { ...rawBody, model: input.modelName, stream: input.stream }
+      : sanitizeResponsesBodyForProxyViaTransformer(rawBody, input.modelName, input.stream);
     if (preserveWebsocketIncrementalMode && rawBody.generate === false) {
       sanitizedResponsesBody.generate = false;
     }

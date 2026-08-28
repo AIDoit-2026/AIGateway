@@ -536,17 +536,15 @@ export function sanitizeResponsesBodyForProxy(
   stream: boolean,
   options?: { defaultEncryptedReasoningInclude?: boolean },
 ): Record<string, unknown> {
-  let normalized = normalizeResponsesBodyForCompatibility({
-    ...body,
-    model: modelName,
-    stream,
-  });
+  // Pass the downstream input through verbatim: normalizing/rewriting input
+  // items here used to silently drop function_call / function_call_output
+  // entries and break Codex tool-calling. Only bodies that are not in
+  // responses shape at all (messages/prompt) get a structural conversion.
+  let normalized: Record<string, unknown> = { ...body, model: modelName, stream };
 
   if (normalized.input === undefined) {
     if (Array.isArray((normalized as Record<string, unknown>).messages)) {
-      normalized = normalizeResponsesBodyForCompatibility(
-        convertOpenAiBodyToResponsesBody(normalized, modelName, stream),
-      );
+      normalized = convertOpenAiBodyToResponsesBody(normalized, modelName, stream);
     } else {
       const prompt = asTrimmedString((normalized as Record<string, unknown>).prompt);
       if (prompt) {

@@ -175,7 +175,7 @@ describe('proxy route architecture boundaries', () => {
     expect(surfaceSource).toContain('openAiResponsesTransformer.proxyStream.createSession(');
   });
 
-  it('keeps oauth refresh recovery and success bookkeeping behind shared surface helpers', () => {
+  it('keeps success bookkeeping behind shared surface helpers and does not retry Responses requests', () => {
     const chatSurfaceSource = readSource('../../proxy-core/surfaces/chatSurface.ts');
     const responsesSurfaceSource = readSource('../../proxy-core/surfaces/openAiResponsesSurface.ts');
 
@@ -186,7 +186,7 @@ describe('proxy route architecture boundaries', () => {
     expect(chatSurfaceSource).not.toContain('resolveProxyLogBilling(');
     expect((chatSurfaceSource.match(/bestEffortMetrics:/g) || []).length).toBeGreaterThanOrEqual(2);
 
-    expect(responsesSurfaceSource).toContain('trySurfaceOauthRefreshRecovery(');
+    expect(responsesSurfaceSource).not.toContain('trySurfaceOauthRefreshRecovery(');
     expect(responsesSurfaceSource).toContain('recordSurfaceSuccess(');
     expect(responsesSurfaceSource).not.toContain('refreshOauthAccessTokenSingleflight(');
     expect(responsesSurfaceSource).not.toContain('resolveProxyUsageWithSelfLogFallback(');
