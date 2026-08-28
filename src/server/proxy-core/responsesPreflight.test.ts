@@ -6,27 +6,20 @@ import {
 } from './responsesPreflight.js';
 
 describe('validateExternalResponsesHttpRequest', () => {
-  it('rejects external HTTP previous_response_id and explains msg ids separately', () => {
+  it('allows external HTTP previous_response_id to pass through for upstream validation', () => {
     const responseIdResult = validateExternalResponsesHttpRequest({
       model: 'gpt-5',
       previous_response_id: 'resp_prev_1',
       input: 'hello',
     });
-    expect(responseIdResult.ok).toBe(false);
-    if (!responseIdResult.ok) {
-      expect(responseIdResult.payload.error.message).toContain('HTTP /v1/responses does not support');
-    }
+    expect(responseIdResult.ok).toBe(true);
 
     const messageIdResult = validateExternalResponsesHttpRequest({
       model: 'gpt-5',
       previous_response_id: 'msg_prev_1',
       input: 'hello',
     });
-    expect(messageIdResult.ok).toBe(false);
-    if (!messageIdResult.ok) {
-      expect(messageIdResult.payload.error.message).toContain('response id');
-      expect(messageIdResult.payload.error.message).toContain('msg_*');
-    }
+    expect(messageIdResult.ok).toBe(true);
   });
 
   it('rejects HTTP function_call_output without call_id or local context, but allows matching item_reference', () => {

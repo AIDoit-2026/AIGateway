@@ -13,8 +13,8 @@ afterEach(() => {
 });
 
 describe('proxyChannelRetry', () => {
-  it('parses proxy max channel attempts from config with a safer default', () => {
-    expect(buildConfig({} as NodeJS.ProcessEnv).proxyMaxChannelAttempts).toBe(3);
+  it('defaults to a single channel attempt so the client drives retries', () => {
+    expect(buildConfig({} as NodeJS.ProcessEnv).proxyMaxChannelAttempts).toBe(1);
     expect(buildConfig({ PROXY_MAX_CHANNEL_ATTEMPTS: '3' } as NodeJS.ProcessEnv).proxyMaxChannelAttempts).toBe(3);
   });
 

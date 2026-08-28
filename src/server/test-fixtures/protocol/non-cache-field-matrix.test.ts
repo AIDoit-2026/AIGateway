@@ -68,10 +68,9 @@ describe('non-cache cross-protocol field matrix', () => {
       previous_response_id: 'msg_wrong',
       input: 'hello',
     });
-    expect(previousResponseDiagnostic.ok).toBe(false);
-    if (!previousResponseDiagnostic.ok) {
-      expect(previousResponseDiagnostic.payload.error.message).toContain('msg_*');
-    }
+    // previous_response_id is forwarded verbatim; the upstream owns the
+    // continuation diagnostic now.
+    expect(previousResponseDiagnostic.ok).toBe(true);
 
     const functionOutputDiagnostic = validateExternalResponsesHttpRequest({
       model: 'gpt-5',

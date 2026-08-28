@@ -107,7 +107,7 @@ describe('openAiResponsesTransformer.inbound', () => {
     });
   });
 
-  it('returns a protocol request envelope with a normalized responses body', () => {
+  it('returns a protocol request envelope with the responses body passed through verbatim', () => {
     const result = openAiResponsesTransformer.transformRequest({
       model: 'gpt-5',
       input: 'hello',
@@ -128,18 +128,10 @@ describe('openAiResponsesTransformer.inbound', () => {
       parsed: {
         normalizedBody: {
           model: 'gpt-5',
-          input: [
-            {
-              type: 'message',
-              role: 'user',
-              content: [
-                {
-                  type: 'input_text',
-                  text: 'hello',
-                },
-              ],
-            },
-          ],
+          input: 'hello',
+          reasoning: {
+            effort: 'high',
+          },
           stream: false,
         },
       },

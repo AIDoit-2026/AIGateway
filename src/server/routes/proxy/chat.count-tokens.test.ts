@@ -303,11 +303,13 @@ describe('claude count_tokens proxy route', () => {
       },
     });
 
-    expect(response.statusCode).toBe(503);
+    // With client-driven retries (single channel attempt by default), the
+    // missing count_tokens compatibility is surfaced immediately.
+    expect(response.statusCode).toBe(501);
     expect(response.json()).toEqual({
       error: {
-        message: 'No available channels for this model',
-        type: 'server_error',
+        message: 'Claude count_tokens compatibility is not implemented for this upstream',
+        type: 'invalid_request_error',
       },
     });
     expect(fetchMock).not.toHaveBeenCalled();

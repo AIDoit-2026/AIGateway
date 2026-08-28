@@ -116,6 +116,7 @@ vi.mock('../../db/index.js', () => ({
   },
   hasProxyLogBillingDetailsColumn: async () => false,
   hasProxyLogClientColumns: async () => false,
+  hasProxyLogClientIpColumn: async () => false,
   hasProxyLogDownstreamApiKeyIdColumn: async () => false,
   hasProxyLogStreamTimingColumns: async () => false,
   schema: {
@@ -523,13 +524,7 @@ describe('responses proxy codex oauth refresh', () => {
     expect(forwardedBody.instructions).toBe(CODEX_DEFAULT_INSTRUCTIONS);
     expect(forwardedBody.prompt_cache_key).toBeUndefined();
     expect(forwardedBody.stream).toBe(true);
-    expect(forwardedBody.input).toEqual([
-      {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text: 'hello codex' }],
-      },
-    ]);
+    expect(forwardedBody.input).toBe('hello codex');
   });
 
   it('extracts codex system input into top-level instructions before proxying upstream', async () => {
@@ -686,7 +681,18 @@ describe('responses proxy codex oauth refresh', () => {
     ]);
   });
 
-  it('rejects external HTTP previous_response_id without touching upstream', async () => {
+  it('forwards external HTTP previous_response_id verbatim and surfaces the upstream error unchanged', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      error: {
+        message: 'previous_response_id msg_wrong_1 was not found in upstream storage',
+        code: 'invalid_value',
+        type: 'invalid_request_error',
+      },
+    }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    }));
+
     const response = await app.inject({
       method: 'POST',
       url: '/v1/responses',
@@ -698,9 +704,13 @@ describe('responses proxy codex oauth refresh', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json().error.message).toContain('msg_*');
-    expect(response.json().error.message).toContain('HTTP /v1/responses');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.json().error.message).toContain('previous_response_id msg_wrong_1 was not found');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [, options] = fetchMock.mock.calls[0] as [string, any];
+    const forwardedBody = JSON.parse(options.body);
+    expect(forwardedBody.previous_response_id).toBe('msg_wrong_1');
+    expect(forwardedBody.input).toBe('hello');
   });
 
   it('rejects orphan external HTTP function_call_output but keeps codex session inference allowed', async () => {
@@ -1059,9 +1069,24 @@ describe('responses proxy codex oauth refresh', () => {
       },
     });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error.message).toContain('HTTP /v1/responses');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().output_text).toBe('recovered after dropping stale previous_response_id');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const [, firstOptions] = fetchMock.mock.calls[0] as [string, any];
+    const [, secondOptions] = fetchMock.mock.calls[1] as [string, any];
+    const firstBody = JSON.parse(firstOptions.body);
+    const secondBody = JSON.parse(secondOptions.body);
+    expect(firstBody.previous_response_id).toBe('resp_stale');
+    expect(secondBody.previous_response_id).toBeUndefined();
+    expect(secondBody.input).toEqual([
+      {
+        id: 'tool_out_retry_1',
+        type: 'function_call_output',
+        call_id: 'call_retry_1',
+        output: '{"retry":true}',
+      },
+    ]);
   });
 
   it('strips generic downstream headers before forwarding codex responses upstream', async () => {
@@ -1429,7 +1454,7 @@ describe('responses proxy codex oauth refresh', () => {
     expect(response.body).toContain('data: [DONE]');
   });
 
-  it('preserves codex-required instructions and store fields across responses compatibility retries', async () => {
+  it('surfaces the upstream error on a single attempt while preserving codex-required fields', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
       error: { message: 'upstream_error', type: 'upstream_error' },
     }), {
@@ -1448,21 +1473,15 @@ describe('responses proxy codex oauth refresh', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const [, firstOptions] = fetchMock.mock.calls[0] as [string, any];
-    const [, secondOptions] = fetchMock.mock.calls[1] as [string, any];
-    const firstBody = JSON.parse(firstOptions.body);
-    const secondBody = JSON.parse(secondOptions.body);
-
-    expect(firstBody.instructions).toBe(CODEX_DEFAULT_INSTRUCTIONS);
-    expect(firstBody.store).toBe(false);
-    expect(firstBody.stream).toBe(true);
-    expect(firstBody.max_output_tokens).toBeUndefined();
-    expect(secondBody.instructions).toBe(CODEX_DEFAULT_INSTRUCTIONS);
-    expect(secondBody.store).toBe(false);
-    expect(secondBody.stream).toBe(true);
-    expect(secondBody.max_output_tokens).toBeUndefined();
+    const [, options] = fetchMock.mock.calls[0] as [string, any];
+    const forwardedBody = JSON.parse(options.body);
+    expect(forwardedBody.instructions).toBe(CODEX_DEFAULT_INSTRUCTIONS);
+    expect(forwardedBody.store).toBe(false);
+    expect(forwardedBody.stream).toBe(true);
+    expect(forwardedBody.max_output_tokens).toBeUndefined();
+    expect(JSON.stringify(response.json())).toContain('upstream_error');
   });
 
   it('does not record success when a streaming responses request ends with response.failed', async () => {

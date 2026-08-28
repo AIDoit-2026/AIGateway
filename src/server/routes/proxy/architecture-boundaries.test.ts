@@ -64,7 +64,12 @@ describe('proxy route architecture boundaries', () => {
     expect(source).not.toContain('function shouldDowngradeFromChatToMessagesForResponses(');
     expect(source).not.toContain('function normalizeText(');
     expect(surfaceSource).toContain('openAiResponsesTransformer.inbound.toOpenAiBody(');
-    expect(surfaceSource).toContain('openAiResponsesTransformer.compatibility.createEndpointStrategy(');
+    // Strict responses-only mode: the surface never uses the compatibility
+    // endpoint strategy, so /v1/responses failures are surfaced verbatim
+    // instead of being silently retried as chat/messages upstreams.
+    expect(surfaceSource).not.toContain('openAiResponsesTransformer.compatibility.createEndpointStrategy(');
+    expect(surfaceSource).toContain('isPlatformAdapterUpstream');
+    expect(surfaceSource).toContain(": ['responses'];");
     expect(surfaceSource).not.toContain('openAiResponsesTransformer.aggregator.createState(');
     expect(surfaceSource).not.toContain('openAiResponsesTransformer.aggregator.serialize(');
     expect(surfaceSource).not.toContain('openAiResponsesTransformer.aggregator.complete(');
@@ -76,7 +81,10 @@ describe('proxy route architecture boundaries', () => {
   it('keeps responses endpoint retry and downgrade strategy out of the route', () => {
     const source = readSource('./responses.ts');
     const surfaceSource = readSource('../../proxy-core/surfaces/openAiResponsesSurface.ts');
-    expect(surfaceSource).toContain('openAiResponsesTransformer.compatibility.createEndpointStrategy(');
+    expect(surfaceSource).not.toContain('openAiResponsesTransformer.compatibility.createEndpointStrategy(');
+    expect(surfaceSource).not.toContain('compatibility.buildRetryBodies');
+    expect(surfaceSource).not.toContain('compatibility.buildRetryHeaders');
+    expect(surfaceSource).not.toContain('compatibility.shouldRetry');
     expect(source).not.toContain('openAiResponsesTransformer.compatibility.shouldRetry(');
     expect(source).not.toContain('openAiResponsesTransformer.compatibility.buildRetryBodies(');
     expect(source).not.toContain('openAiResponsesTransformer.compatibility.buildRetryHeaders(');

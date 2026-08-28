@@ -323,45 +323,11 @@ describe('sanitizeResponsesBodyForProxy', () => {
     expect(result.max_completion_tokens).toBeUndefined();
   });
 
-  it('normalizes failed input item statuses before proxying Responses requests', () => {
-    const result = sanitizeResponsesBodyForProxy(
+  it('passes response-shaped input items through verbatim without dropping or rewriting tool items', () => {
+    const input = [
       {
-        model: 'gpt-5',
-        input: [
-          {
-            role: 'assistant',
-            status: 'failed',
-            content: [
-              {
-                type: 'output_text',
-                text: 'tool step failed',
-              },
-            ],
-          },
-          {
-            type: 'function_call',
-            call_id: 'call_1',
-            name: 'lookup_weather',
-            arguments: '{"city":"Shanghai"}',
-            status: 'failed',
-          },
-          {
-            type: 'function_call_output',
-            call_id: 'call_1',
-            output: '{"error":"timeout"}',
-            status: 'completed',
-          },
-        ],
-      },
-      'gpt-5',
-      false,
-    );
-
-    expect(result.input).toEqual([
-      {
-        type: 'message',
         role: 'assistant',
-        status: 'incomplete',
+        status: 'failed',
         content: [
           {
             type: 'output_text',
@@ -374,7 +340,7 @@ describe('sanitizeResponsesBodyForProxy', () => {
         call_id: 'call_1',
         name: 'lookup_weather',
         arguments: '{"city":"Shanghai"}',
-        status: 'incomplete',
+        status: 'failed',
       },
       {
         type: 'function_call_output',
@@ -382,123 +348,40 @@ describe('sanitizeResponsesBodyForProxy', () => {
         output: '{"error":"timeout"}',
         status: 'completed',
       },
-    ]);
-  });
-
-  it('drops unsupported input item statuses before proxying Responses requests', () => {
-    const result = sanitizeResponsesBodyForProxy(
-      {
-        model: 'gpt-5',
-        input: [
-          {
-            type: 'message',
-            role: 'user',
-            status: 'errored',
-            content: 'hello',
-          },
-          {
-            type: 'function_call',
-            call_id: 'call_2',
-            name: 'lookup_weather',
-            arguments: '{}',
-            status: 'invalid',
-          },
-          {
-            type: 'reasoning',
-            id: 'rs_1',
-            status: 'broken',
-            summary: [],
-          },
-        ],
-      },
-      'gpt-5',
-      false,
-    );
-
-    expect(result.input).toEqual([
       {
         type: 'message',
         role: 'user',
-        content: [
-          {
-            type: 'input_text',
-            text: 'hello',
-          },
-        ],
-      },
-      {
-        type: 'function_call',
-        call_id: 'call_2',
-        name: 'lookup_weather',
-        arguments: '{}',
+        status: 'errored',
+        content: 'hello',
       },
       {
         type: 'reasoning',
         id: 'rs_1',
+        status: 'broken',
         summary: [],
       },
-    ]);
-  });
-
-  it('drops blank tool calls before proxying Responses requests while preserving follow-up tool outputs', () => {
-    const result = sanitizeResponsesBodyForProxy(
       {
-        model: 'gpt-5',
-        input: [
-          {
-            type: 'function_call',
-            call_id: 'call_blank',
-            name: '   ',
-            arguments: '{"city":"Shanghai"}',
-          },
-          {
-            type: 'function_call_output',
-            call_id: 'call_blank',
-            output: '{"temp":22}',
-          },
-          {
-            type: 'message',
-            role: 'assistant',
-            content: [
-              {
-                type: 'output_text',
-                text: 'continue normally',
-              },
-            ],
-          },
-          {
-            type: 'function_call_output',
-            call_id: 'call_missing',
-            output: 'orphaned output',
-          },
-        ],
-      },
-      'gpt-5',
-      false,
-    );
-
-    expect(result.input).toEqual([
-      {
-        type: 'function_call_output',
+        type: 'function_call',
         call_id: 'call_blank',
-        output: '{"temp":22}',
-      },
-      {
-        type: 'message',
-        role: 'assistant',
-        content: [
-          {
-            type: 'output_text',
-            text: 'continue normally',
-          },
-        ],
+        name: '   ',
+        arguments: '{"city":"Shanghai"}',
       },
       {
         type: 'function_call_output',
         call_id: 'call_missing',
         output: 'orphaned output',
       },
-    ]);
+    ];
+    const result = sanitizeResponsesBodyForProxy(
+      {
+        model: 'gpt-5',
+        input,
+      },
+      'gpt-5',
+      false,
+    );
+
+    expect(result.input).toEqual(input);
   });
 });
 

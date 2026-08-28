@@ -1463,7 +1463,7 @@ describe('buildUpstreamEndpointRequest', () => {
     expect(request.body.instructions).toBe('be careful\n\nkeep edits narrow');
   });
 
-  it('normalizes downstream responses input string before forwarding upstream', () => {
+  it('forwards downstream responses input string verbatim before sending upstream', () => {
     const request = buildUpstreamEndpointRequest({
       endpoint: 'responses',
       modelName: 'upstream-gpt',
@@ -1482,13 +1482,7 @@ describe('buildUpstreamEndpointRequest', () => {
 
     expect(request.path).toBe('/v1/responses');
     expect(request.body.metadata).toEqual({ trace: 'abc123' });
-    expect(request.body.input).toEqual([
-      {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text: 'hello' }],
-      },
-    ]);
+    expect(request.body.input).toBe('hello');
   });
 
   it('preserves multimodal user content when converting chat to messages', () => {
@@ -1675,13 +1669,7 @@ describe('buildUpstreamEndpointRequest', () => {
     expect(request.body.custom_vendor_flag).toBe('keep-me');
     expect(request.body.max_completion_tokens).toBeUndefined();
     expect(request.body.max_output_tokens).toBe(512);
-    expect(request.body.input).toEqual([
-      {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text: 'hello' }],
-      },
-    ]);
+    expect(request.body.input).toBe('hello');
   });
 
   it('backfills responses input from legacy messages payload', () => {

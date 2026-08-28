@@ -1,6 +1,8 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { config } from '../../config.js';
+
 const fetchMock = vi.fn();
 const selectChannelMock = vi.fn();
 const selectNextChannelMock = vi.fn();
@@ -170,6 +172,8 @@ describe('/v1/images/edits route', () => {
   });
 
   it('retries the next channel when image generation JSON is malformed', async () => {
+    const originalMaxChannelAttempts = config.proxyMaxChannelAttempts;
+    config.proxyMaxChannelAttempts = 2;
     selectNextChannelMock.mockReturnValueOnce({
       channel: { id: 12, routeId: 23 },
       site: { id: 45, name: 'fallback-site', url: 'https://fallback.example.com', platform: 'openai' },
@@ -208,6 +212,7 @@ describe('/v1/images/edits route', () => {
       created: 2,
       data: [{ b64_json: 'ZmFsbGJhY2s=' }],
     });
+    config.proxyMaxChannelAttempts = originalMaxChannelAttempts;
     expect(selectNextChannelMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

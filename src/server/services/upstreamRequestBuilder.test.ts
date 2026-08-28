@@ -52,13 +52,7 @@ describe('upstreamRequestBuilder', () => {
 
     expect(request.path).toBe('/v1/responses');
     expect(request.headers.accept).toBe('text/event-stream');
-    expect(request.body.input).toEqual([
-      {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text: 'hello' }],
-      },
-    ]);
+    expect(request.body.input).toBe('hello');
     expect(request.body.stream).toBe(true);
     expect(request.body.store).toBe(false);
   });
