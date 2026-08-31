@@ -27,4 +27,28 @@ describe('summarizeFailedUpstreamRequest', () => {
     expect(summary.errorCategory).toBe('timeout');
     expect(summary.durationMs).toBe(321);
   });
+
+  it('expands nested fetch failures with cause details', () => {
+    const cause = Object.assign(new Error('getaddrinfo ENOTFOUND api.ikuncode.cc'), {
+      code: 'ENOTFOUND',
+      errno: -3008,
+      syscall: 'getaddrinfo',
+    });
+    const summary = summarizeFailedUpstreamRequest({
+      url: 'https://api.ikuncode.cc/v1/responses',
+      method: 'POST',
+      error: Object.assign(new TypeError('fetch failed'), { cause }),
+    });
+
+    expect(summary.errorName).toBe('TypeError');
+    expect(summary.errorMessage).toContain('fetch failed');
+    expect(summary.errorMessage).toContain('cause=getaddrinfo ENOTFOUND api.ikuncode.cc');
+    expect(summary.errorCode).toBeUndefined();
+    expect(summary.errorCause).toEqual({
+      name: 'Error',
+      message: 'getaddrinfo ENOTFOUND api.ikuncode.cc',
+      code: 'ENOTFOUND',
+    });
+    expect(summary.errorCategory).toBe('network');
+  });
 });

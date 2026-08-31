@@ -616,18 +616,19 @@ export function createSurfaceFailureToolkit(input: {
 
   return {
     log,
-    async handleUpstreamFailure(args: {
-      selected: SurfaceSelectedChannel;
-      requestedModel: string;
-      modelName: string;
-      status: number;
-      errText: string;
-      rawErrText?: string | null;
-      upstreamUrl?: string | null;
-      upstreamMethod?: string | null;
-      upstreamHeaders?: Record<string, string> | null;
-      requestId?: string | null;
-      isStream?: boolean | null;
+  async handleUpstreamFailure(args: {
+    selected: SurfaceSelectedChannel;
+    requestedModel: string;
+    modelName: string;
+    status: number;
+    errText: string;
+    rawErrText?: string | null;
+    error?: unknown;
+    upstreamUrl?: string | null;
+    upstreamMethod?: string | null;
+    upstreamHeaders?: Record<string, string> | null;
+    requestId?: string | null;
+    isStream?: boolean | null;
       firstByteLatencyMs?: number | null;
       latencyMs: number;
       retryCount: number;
@@ -640,7 +641,7 @@ export function createSurfaceFailureToolkit(input: {
         headers: args.upstreamHeaders || undefined,
         requestId: args.requestId || undefined,
         status: args.status,
-        error: new Error(args.errText),
+        error: args.error || new Error(args.errText),
       });
       await recordFailure('record upstream failure', args.selected, {
         status: args.status,
@@ -770,6 +771,7 @@ export function createSurfaceFailureToolkit(input: {
       requestedModel: string;
       modelName: string;
       errorMessage: string;
+      error?: unknown;
       isStream?: boolean | null;
       firstByteLatencyMs?: number | null;
       latencyMs: number;
@@ -785,7 +787,7 @@ export function createSurfaceFailureToolkit(input: {
         method: args.upstreamMethod || 'POST',
         headers: args.upstreamHeaders || undefined,
         requestId: args.requestId || undefined,
-        error: new Error(args.errorMessage || 'network failure'),
+        error: args.error || new Error(args.errorMessage || 'network failure'),
       });
       await recordFailure('record execution error', args.selected, {
         errorText: args.errorMessage,

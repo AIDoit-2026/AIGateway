@@ -1254,18 +1254,19 @@ export async function handleOpenAiResponsesSurfaceRequest(
           if (isSiteApiEndpointFailure) {
             const failureOutcome = await failureToolkit.handleUpstreamFailure({
               selected,
-          requestedModel,
-          modelName,
-          status: endpointFailureStatus || 502,
-          errText: err?.message || 'unknown error',
-          rawErrText: err?.rawErrText || err?.message || 'unknown error',
-          upstreamUrl: err?.targetUrl || null,
-          upstreamMethod: err?.method || 'POST',
-          upstreamHeaders: err?.headers || null,
-          isStream,
-          latencyMs: Date.now() - startTime,
-          retryCount,
-        });
+              requestedModel,
+              modelName,
+              status: endpointFailureStatus || 502,
+              errText: err?.message || 'unknown error',
+              rawErrText: err?.rawErrText || err?.message || 'unknown error',
+              error: err,
+              upstreamUrl: err?.targetUrl || null,
+              upstreamMethod: err?.method || 'POST',
+              upstreamHeaders: err?.headers || null,
+              isStream,
+              latencyMs: Date.now() - startTime,
+              retryCount,
+            });
             const terminalFailureOutcome = failureOutcome.action === 'retry'
               ? (canRetryChannelSelection(retryCount, forcedChannelId)
                 ? null
@@ -1287,6 +1288,7 @@ export async function handleOpenAiResponsesSurfaceRequest(
 	          requestedModel,
             modelName,
             errorMessage: err?.message || 'network failure',
+            error: err,
             isStream,
             latencyMs: Date.now() - startTime,
             retryCount,
