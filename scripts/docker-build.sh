@@ -17,7 +17,7 @@ set -euo pipefail
 #   Extra script arguments are passed through to docker build.
 
 # LAST RUN 
-# IMAGE_NAME=aigateway TAG_LATEST=0 VERSION=2.1.3 ./scripts/docker-build.sh
+# IMAGE_NAME=aigateway TAG_LATEST=0 VERSION=2.1.4 ./scripts/docker-build.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
