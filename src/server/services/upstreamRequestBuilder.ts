@@ -421,6 +421,7 @@ export function buildUpstreamEndpointRequest(input: {
   providerHeaders?: Record<string, string>;
   codexSessionCacheKey?: string | null;
   codexExplicitSessionId?: string | null;
+  preserveResponsesBody?: boolean;
 }): {
   path: string;
   headers: Record<string, string>;
