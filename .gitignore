@@ -27,3 +27,5 @@ docs/plan/
 # sync plans to the cloud
 # docs/plans/
 .ace-tool/
+
+.workbuddy/

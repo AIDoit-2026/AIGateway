@@ -148,6 +148,12 @@ export function buildConfig(env: NodeJS.ProcessEnv) {
     codexUpstreamWebsocketEnabled: parseBoolean(env.CODEX_UPSTREAM_WEBSOCKET_ENABLED, false),
     responsesCompactFallbackToResponsesEnabled: parseBoolean(env.RESPONSES_COMPACT_FALLBACK_TO_RESPONSES_ENABLED, false),
     disableCrossProtocolFallback: parseBoolean(env.DISABLE_CROSS_PROTOCOL_FALLBACK, false),
+    // Downstream protocol is pinned to the matching native upstream endpoint:
+    // `/v1/messages` is only ever sent to `/v1/messages`. When the upstream does
+    // not speak the protocol the request fails instead of being converted, which
+    // would silently drop protocol-specific semantics (prompt cache breakpoints)
+    // and burn tokens. Disable only as an escape hatch.
+    strictProtocolEndpoint: parseBoolean(env.STRICT_PROTOCOL_ENDPOINT, true),
     proxyDebugTraceEnabled: proxyLowLatencyMode ? false : parseBoolean(env.PROXY_DEBUG_TRACE_ENABLED, false),
     proxyDebugCaptureHeaders: parseBoolean(env.PROXY_DEBUG_CAPTURE_HEADERS, true),
     proxyDebugCaptureBodies: parseBoolean(env.PROXY_DEBUG_CAPTURE_BODIES, false),

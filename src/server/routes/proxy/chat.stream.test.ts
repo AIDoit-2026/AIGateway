@@ -1025,7 +1025,7 @@ describe('chat proxy stream behavior', () => {
     ]);
   });
 
-  it('prefers responses for Claude tool_result follow-ups that include continuation hints', async () => {
+  it('keeps claude tool_result follow-ups with continuation hints on /v1/messages without conversion', async () => {
     selectChannelMock.mockReturnValue({
       channel: { id: 11, routeId: 22 },
       site: {
@@ -1039,23 +1039,13 @@ describe('chat proxy stream behavior', () => {
       actualModel: 'gpt-5.4',
     });
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
-      id: 'resp_1',
-      object: 'response',
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
       model: 'gpt-5.4',
-      created_at: 1_706_000_000,
-      status: 'completed',
-      output: [{
-        id: 'msg_1',
-        type: 'message',
-        role: 'assistant',
-        status: 'completed',
-        content: [{ type: 'output_text', text: 'done' }],
-      }],
-      usage: {
-        input_tokens: 5,
-        output_tokens: 1,
-        total_tokens: 6,
-      },
+      content: [{ type: 'text', text: 'done' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 5, output_tokens: 1 },
     }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1068,6 +1058,7 @@ describe('chat proxy stream behavior', () => {
         model: 'claude-opus-4-6',
         max_tokens: 256,
         previous_response_id: 'resp_prev_1',
+        prompt_cache_key: 'cache-key-1',
         messages: [
           {
             role: 'user',
@@ -1085,14 +1076,15 @@ describe('chat proxy stream behavior', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/v1/responses');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/v1/messages');
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('/v1/responses');
     const forwardedBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
-    expect(forwardedBody.previous_response_id).toBe('resp_prev_1');
-    expect(forwardedBody.input[0]).toEqual({
-      type: 'function_call_output',
-      call_id: 'toolu_missing',
-      output: '{"matches":1}',
-    });
+    // Continuation hints are responses-only fields and are stripped instead of
+    // being forwarded through a protocol conversion.
+    expect(forwardedBody.previous_response_id).toBeUndefined();
+    expect(forwardedBody.prompt_cache_key).toBeUndefined();
+    expect(forwardedBody.messages[0].content[0].type).toBe('tool_result');
+    expect(forwardedBody.messages[0].content[0].tool_use_id).toBe('toolu_missing');
   });
 
   it('converts OpenAI tool_calls SSE into Claude tool_use stream events on /v1/messages', async () => {
@@ -1437,39 +1429,16 @@ describe('chat proxy stream behavior', () => {
     );
   });
 
-  it('downgrades to next endpoint when normalized Claude fallback still returns messages is required', async () => {
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        error: {
-          type: '<nil>',
-          message: 'messages is required',
-        },
-      }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        error: {
-          type: '<nil>',
-          message: 'messages is required',
-        },
-      }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        id: 'chatcmpl_downgraded_ok',
-        object: 'chat.completion',
-        model: 'upstream-gpt',
-        choices: [{
-          index: 0,
-          message: { role: 'assistant', content: 'ok after endpoint downgrade' },
-          finish_reason: 'stop',
-        }],
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }));
+  it('never leaves /v1/messages when upstream asks for a different protocol', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        type: '<nil>',
+        message: 'messages is required',
+      },
+    }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    }));
 
     const response = await app.inject({
       method: 'POST',
@@ -1481,15 +1450,16 @@ describe('chat proxy stream behavior', () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(fetchMock.mock.calls.length).toBe(3);
-    const [firstUrl] = fetchMock.mock.calls[0] as [string, any];
-    const [secondUrl] = fetchMock.mock.calls[1] as [string, any];
-    const [thirdUrl] = fetchMock.mock.calls[2] as [string, any];
-    expect(firstUrl).toContain('/v1/messages');
-    expect(secondUrl).toContain('/v1/messages');
-    expect(thirdUrl).toContain('/v1/chat/completions');
-    expect(response.json()?.type).toBe('message');
+    // Same-protocol compatibility retries are still allowed, but the proxy never
+    // converts the request into chat/responses on its own.
+    const attemptedUrls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(attemptedUrls.length).toBeGreaterThanOrEqual(1);
+    for (const attemptedUrl of attemptedUrls) {
+      expect(attemptedUrl).toContain('/v1/messages');
+      expect(attemptedUrl).not.toContain('/v1/chat/completions');
+      expect(attemptedUrl).not.toContain('/v1/responses');
+    }
+    expect(response.statusCode).toBe(400);
   });
 
   it('passes through Claude tool_use SSE events on /v1/messages for CLI tool execution', async () => {
@@ -3919,7 +3889,7 @@ describe('chat proxy stream behavior', () => {
     expect(response.json()?.choices?.[0]?.message?.content).toContain('ok via responses');
   });
 
-  it('forces openai platform to use /v1/responses for claude downstream requests', async () => {
+  it('sends claude downstream requests to /v1/messages for openai-platform relays', async () => {
     selectChannelMock.mockReturnValue({
       channel: { id: 11, routeId: 22 },
       site: { name: 'openai-site', url: 'https://api.openai.com', platform: 'openai' },
@@ -3930,18 +3900,13 @@ describe('chat proxy stream behavior', () => {
     });
 
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
-      id: 'resp-openai-for-claude-downstream',
-      object: 'response',
+      id: 'msg-openai-for-claude-downstream',
+      type: 'message',
+      role: 'assistant',
       model: 'gpt-4o-mini',
-      status: 'completed',
-      output: [{
-        id: 'msg-openai-for-claude-downstream',
-        type: 'message',
-        role: 'assistant',
-        status: 'completed',
-        content: [{ type: 'output_text', text: 'openai endpoint selected' }],
-      }],
-      usage: { input_tokens: 4, output_tokens: 3, total_tokens: 7 },
+      content: [{ type: 'text', text: 'native messages endpoint selected' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 4, output_tokens: 3 },
     }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -3959,12 +3924,42 @@ describe('chat proxy stream behavior', () => {
 
     expect(response.statusCode).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [targetUrl] = fetchMock.mock.calls[0] as [string, any];
-    expect(targetUrl).toContain('/v1/responses');
-    expect(targetUrl).not.toContain('/v1/messages');
+    const [targetUrl, options] = fetchMock.mock.calls[0] as [string, any];
+    expect(targetUrl).toContain('/v1/messages');
+    expect(targetUrl).not.toContain('/v1/responses');
+    const forwardedBody = JSON.parse(options.body);
+    expect(forwardedBody.input).toBeUndefined();
+    expect(forwardedBody.max_tokens).toBe(128);
+    expect(forwardedBody.messages[0].role).toBe('user');
+    expect(response.json()?.content?.[0]?.text).toBe('native messages endpoint selected');
   });
 
-  it('preserves claude tool_use/tool_result when claude downstream is routed to openai responses endpoint', async () => {
+  it('rejects /v1/messages for platforms that only speak another protocol', async () => {
+    selectChannelMock.mockReturnValue({
+      channel: { id: 11, routeId: 22 },
+      site: { name: 'codex-site', url: 'https://chatgpt.com/backend-api/codex', platform: 'codex' },
+      account: { id: 33, username: 'demo-user' },
+      tokenName: 'default',
+      tokenValue: 'sk-codex',
+      actualModel: 'gpt-5.4',
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/messages',
+      payload: {
+        model: 'gpt-5.4',
+        max_tokens: 128,
+        messages: [{ role: 'user', content: 'hello' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(501);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(String(response.json()?.error?.message)).toContain('/v1/messages');
+  });
+
+  it('preserves claude tool_use/tool_result verbatim when claude downstream stays on /v1/messages', async () => {
     selectChannelMock.mockReturnValue({
       channel: { id: 11, routeId: 22 },
       site: { name: 'openai-site', url: 'https://api.openai.com', platform: 'openai' },
@@ -3975,18 +3970,13 @@ describe('chat proxy stream behavior', () => {
     });
 
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
-      id: 'resp-openai-tools',
-      object: 'response',
+      id: 'msg-openai-tools',
+      type: 'message',
+      role: 'assistant',
       model: 'gpt-4o-mini',
-      status: 'completed',
-      output: [{
-        id: 'msg-openai-tools',
-        type: 'message',
-        role: 'assistant',
-        status: 'completed',
-        content: [{ type: 'output_text', text: 'tool payload received' }],
-      }],
-      usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13 },
+      content: [{ type: 'text', text: 'tool payload received' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 3 },
     }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -4030,24 +4020,26 @@ describe('chat proxy stream behavior', () => {
 
     expect(response.statusCode).toBe(200);
 
-    const [_targetUrl, options] = fetchMock.mock.calls[0] as [string, any];
+    const [targetUrl, options] = fetchMock.mock.calls[0] as [string, any];
+    expect(targetUrl).toContain('/v1/messages');
     const forwardedBody = JSON.parse(options.body);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain('/v1/responses');
-    const forwardedInput = Array.isArray(forwardedBody.input) ? forwardedBody.input : [];
+    expect(forwardedBody.input).toBeUndefined();
 
-    const functionCall = forwardedInput.find((item: any) => item?.type === 'function_call');
-    expect(functionCall).toBeTruthy();
-    expect(functionCall.call_id).toBe('toolu_abc');
-    expect(functionCall.name).toBe('Glob');
-    expect(String(functionCall.arguments || '')).toContain('README*');
+    const assistantContent = forwardedBody.messages.find((item: any) => item?.role === 'assistant')?.content ?? [];
+    const toolUse = assistantContent.find((block: any) => block?.type === 'tool_use');
+    expect(toolUse).toBeTruthy();
+    expect(toolUse.id).toBe('toolu_abc');
+    expect(toolUse.name).toBe('Glob');
+    expect(toolUse.input).toEqual({ pattern: 'README*' });
 
-    const toolOutput = forwardedInput.find((item: any) => item?.type === 'function_call_output');
-    expect(toolOutput).toBeTruthy();
-    expect(toolOutput.call_id).toBe('toolu_abc');
-    expect(String(toolOutput.output || '')).toContain('matches');
+    const userContent = forwardedBody.messages.find((item: any) => item?.role === 'user')?.content ?? [];
+    const toolResult = userContent.find((block: any) => block?.type === 'tool_result');
+    expect(toolResult).toBeTruthy();
+    expect(toolResult.tool_use_id).toBe('toolu_abc');
+    expect(JSON.stringify(toolResult.content || '')).toContain('matches');
   });
 
-  it('maps claude tool config and thinking budget before routing claude downstream requests to openai responses endpoint', async () => {
+  it('passes claude tool config and thinking budget through untouched on /v1/messages', async () => {
     selectChannelMock.mockReturnValue({
       channel: { id: 11, routeId: 22 },
       site: { name: 'openai-site', url: 'https://api.openai.com', platform: 'openai' },
@@ -4058,18 +4050,13 @@ describe('chat proxy stream behavior', () => {
     });
 
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
-      id: 'resp-openai-config-mapped',
-      object: 'response',
+      id: 'msg-openai-config-mapped',
+      type: 'message',
+      role: 'assistant',
       model: 'gpt-4o-mini',
-      status: 'completed',
-      output: [{
-        id: 'msg-openai-config-mapped',
-        type: 'message',
-        role: 'assistant',
-        status: 'completed',
-        content: [{ type: 'output_text', text: 'tool config mapped' }],
-      }],
-      usage: { input_tokens: 9, output_tokens: 3, total_tokens: 12 },
+      content: [{ type: 'text', text: 'tool config mapped' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 9, output_tokens: 3 },
     }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -4104,18 +4091,19 @@ describe('chat proxy stream behavior', () => {
 
     expect(response.statusCode).toBe(200);
 
-    const [_targetUrl, options] = fetchMock.mock.calls[0] as [string, any];
+    const [targetUrl, options] = fetchMock.mock.calls[0] as [string, any];
+    expect(targetUrl).toContain('/v1/messages');
     const forwardedBody = JSON.parse(options.body);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain('/v1/responses');
+    expect(forwardedBody.input).toBeUndefined();
     expect(forwardedBody.metadata).toEqual({ user_id: 'user-1' });
-    expect(forwardedBody.reasoning).toEqual({
+    expect(forwardedBody.thinking).toEqual({
+      type: 'enabled',
       budget_tokens: 1024,
     });
     expect(forwardedBody.tools).toEqual([{
-      type: 'function',
       name: 'Glob',
       description: 'Search files',
-      parameters: {
+      input_schema: {
         type: 'object',
         properties: {
           pattern: { type: 'string' },
@@ -4124,7 +4112,7 @@ describe('chat proxy stream behavior', () => {
       },
     }]);
     expect(forwardedBody.tool_choice).toEqual({
-      type: 'function',
+      type: 'tool',
       name: 'Glob',
     });
   });

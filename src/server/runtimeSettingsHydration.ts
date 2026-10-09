@@ -68,6 +68,11 @@ export function applyRuntimeSettings(settingsMap: Map<string, string>) {
     config.disableCrossProtocolFallback = disableCrossProtocolFallback;
   }
 
+  const strictProtocolEndpoint = parseSettingFromMap<boolean>(settingsMap, 'strict_protocol_endpoint');
+  if (typeof strictProtocolEndpoint === 'boolean') {
+    config.strictProtocolEndpoint = strictProtocolEndpoint;
+  }
+
   const proxyErrorKeywords = parseSettingFromMap<string[] | string>(settingsMap, 'proxy_error_keywords');
   if (proxyErrorKeywords !== undefined) {
     config.proxyErrorKeywords = toStringList(proxyErrorKeywords);

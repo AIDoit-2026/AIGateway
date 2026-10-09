@@ -61,6 +61,7 @@ interface RuntimeSettingsBody {
   codexUpstreamWebsocketEnabled?: boolean;
   responsesCompactFallbackToResponsesEnabled?: boolean;
   disableCrossProtocolFallback?: boolean;
+  strictProtocolEndpoint?: boolean;
   proxySessionChannelConcurrencyLimit?: number;
   proxySessionChannelQueueWaitMs?: number;
   proxyDebugTraceEnabled?: boolean;
@@ -445,6 +446,11 @@ function applyImportedSettingToRuntime(key: string, value: unknown) {
       config.disableCrossProtocolFallback = value;
       return;
     }
+    case 'strict_protocol_endpoint': {
+      if (typeof value !== 'boolean') return;
+      config.strictProtocolEndpoint = value;
+      return;
+    }
     case 'proxy_error_keywords': {
       try {
         config.proxyErrorKeywords = parseProxyErrorKeywords(value);
@@ -744,6 +750,7 @@ function getRuntimeSettingsResponse(currentAdminIp = '') {
     codexUpstreamWebsocketEnabled: config.codexUpstreamWebsocketEnabled,
     responsesCompactFallbackToResponsesEnabled: config.responsesCompactFallbackToResponsesEnabled,
     disableCrossProtocolFallback: config.disableCrossProtocolFallback,
+    strictProtocolEndpoint: config.strictProtocolEndpoint,
     proxySessionChannelConcurrencyLimit: config.proxySessionChannelConcurrencyLimit,
     proxySessionChannelQueueWaitMs: config.proxySessionChannelQueueWaitMs,
     proxyDebugTraceEnabled: config.proxyDebugTraceEnabled,
@@ -1253,6 +1260,24 @@ export async function settingsRoutes(app: FastifyInstance) {
       }
       config.disableCrossProtocolFallback = nextValue;
       upsertSetting('disable_cross_protocol_fallback', config.disableCrossProtocolFallback);
+    }
+
+    if (body.strictProtocolEndpoint !== undefined) {
+      let nextValue = true;
+      try {
+        nextValue = parseBooleanFlag(body.strictProtocolEndpoint, '严格同协议端点开关');
+      } catch (err: any) {
+        return reply.code(400).send({
+          success: false,
+          message: err?.message || '严格同协议端点开关格式无效',
+        });
+      }
+
+      if (nextValue !== config.strictProtocolEndpoint) {
+        changedLabels.push('上下游请求保持同协议');
+      }
+      config.strictProtocolEndpoint = nextValue;
+      upsertSetting('strict_protocol_endpoint', config.strictProtocolEndpoint);
     }
 
     if (body.proxySessionChannelConcurrencyLimit !== undefined) {

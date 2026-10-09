@@ -425,6 +425,7 @@ export type RuntimeSettingsPayload = {
   codexUpstreamWebsocketEnabled?: boolean;
   responsesCompactFallbackToResponsesEnabled?: boolean;
   disableCrossProtocolFallback?: boolean;
+  strictProtocolEndpoint?: boolean;
   proxySessionChannelConcurrencyLimit?: number;
   proxySessionChannelQueueWaitMs?: number;
   proxyDebugTraceEnabled?: boolean;

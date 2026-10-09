@@ -8,6 +8,11 @@ import { type DownstreamFormat } from '../../transformers/shared/normalized.js';
 import { promoteRequiredEndpointCandidateAfterProtocolError } from '../../transformers/shared/endpointCompatibility.js';
 import { shouldForceResponsesUpstreamStream } from '../capabilities/responsesCompact.js';
 import {
+  buildStrictProtocolUnsupportedMessage,
+  resolveStrictProtocolEndpointCandidates,
+} from '../capabilities/nativeProtocolSupport.js';
+import type { UpstreamEndpoint } from '../orchestration/upstreamRequest.js';
+import {
   buildClaudeCountTokensUpstreamRequest,
   buildUpstreamEndpointRequest,
   resolveUpstreamEndpointCandidates,
@@ -253,6 +258,7 @@ export async function handleChatSurfaceRequest(
 
   while (retryCount <= maxRetries && responseOwner.canRetry()) {
     responseOwner.beginChannelAttempt();
+    const attemptStartedAtMs = Date.now();
     const stickyPreferredChannelId = retryCount === 0
       ? getSurfaceStickyPreferredChannelId(stickySessionKey)
       : null;
@@ -298,25 +304,31 @@ export async function handleChatSurfaceRequest(
     const modelName = selected.actualModel || requestedModel;
     const oauth = getOauthInfoFromAccount(selected.account);
     const isCodexSite = String(selected.site.platform || '').trim().toLowerCase() === 'codex';
-    let endpointCandidates = [
-      ...await resolveUpstreamEndpointCandidates(
-        {
-          site: selected.site,
-          account: selected.account,
-        },
-        modelName,
+    const strictProtocolEndpoint = config.strictProtocolEndpoint && downstreamFormat === 'claude';
+    let endpointCandidates: UpstreamEndpoint[] = strictProtocolEndpoint
+      ? resolveStrictProtocolEndpointCandidates({
+        sitePlatform: selected.site.platform,
         downstreamFormat,
-        requestedModel,
-        {
-          hasNonImageFileInput,
-          conversationFileSummary,
-          wantsContinuationAwareResponses,
-        },
-        {
-          oauthProvider: oauth?.provider,
-        },
-      ),
-    ];
+      })
+      : [
+        ...await resolveUpstreamEndpointCandidates(
+          {
+            site: selected.site,
+            account: selected.account,
+          },
+          modelName,
+          downstreamFormat,
+          requestedModel,
+          {
+            hasNonImageFileInput,
+            conversationFileSummary,
+            wantsContinuationAwareResponses,
+          },
+          {
+            oauthProvider: oauth?.provider,
+          },
+        ),
+      ];
     const endpointRuntimeContext = {
       siteId: selected.site.id,
       modelName,
@@ -339,8 +351,36 @@ export async function handleChatSurfaceRequest(
         oauthProvider: oauth?.provider || null,
         isCodexSite,
         wantsContinuationAwareResponses,
+        strictProtocolEndpoint,
       },
     });
+    if (endpointCandidates.length <= 0) {
+      const unsupportedMessage = buildStrictProtocolUnsupportedMessage({
+        sitePlatform: selected.site.platform,
+        downstreamFormat,
+      });
+      await failureToolkit.log({
+        selected,
+        modelRequested: requestedModel,
+        status: 'failed',
+        httpStatus: 501,
+        latencyMs: Date.now() - attemptStartedAtMs,
+        errorMessage: unsupportedMessage,
+        retryCount,
+      });
+      if (canRetryChannelSelection(retryCount, forcedChannelId)) {
+        retryCount += 1;
+        continue;
+      }
+      const payload = {
+        error: {
+          message: unsupportedMessage,
+          type: 'invalid_request_error' as const,
+        },
+      };
+      await finalizeDebugFailure(501, payload, null);
+      return sendOwnedJson('chat:strict-protocol-unsupported', 501, payload);
+    }
     const buildProviderHeaders = () => (
       buildOauthProviderHeaders({
         account: selected.account,
@@ -441,7 +481,7 @@ export async function handleChatSurfaceRequest(
       const debugAttemptBase = reserveSurfaceProxyDebugAttemptBase(debugTrace, endpointCandidates.length);
       return executeEndpointFlow({
         siteUrl: siteApiBaseUrl,
-        disableCrossProtocolFallback: config.disableCrossProtocolFallback,
+        disableCrossProtocolFallback: config.disableCrossProtocolFallback || strictProtocolEndpoint,
         firstByteTimeoutMs: Math.max(0, Math.trunc((config.proxyFirstByteTimeoutSec || 0) * 1000)),
         endpointCandidates,
         buildRequest: (endpoint) => buildEndpointRequest(endpoint),
@@ -1258,19 +1298,24 @@ export async function handleClaudeCountTokensSurfaceRequest(
       downstreamFormat: 'claude' as const,
       requestedModelHint: requestedModel,
     };
-    const endpointCandidates = await resolveUpstreamEndpointCandidates(
-      {
-        site: selected.site,
-        account: selected.account,
-      },
-      modelName,
-      'claude',
-      requestedModel,
-      undefined,
-      {
-        requestKind: 'claude-count-tokens',
-      },
-    );
+    const endpointCandidates = config.strictProtocolEndpoint
+      ? resolveStrictProtocolEndpointCandidates({
+        sitePlatform: selected.site.platform,
+        downstreamFormat: 'claude',
+      })
+      : await resolveUpstreamEndpointCandidates(
+        {
+          site: selected.site,
+          account: selected.account,
+        },
+        modelName,
+        'claude',
+        requestedModel,
+        undefined,
+        {
+          requestKind: 'claude-count-tokens',
+        },
+      );
     await safeUpdateSurfaceProxyDebugCandidates(debugTrace, {
       endpointCandidates,
       endpointRuntimeState: getUpstreamEndpointRuntimeStateSnapshot(endpointRuntimeContext),

@@ -130,7 +130,10 @@ describe('Settings route cooldown cap', () => {
         routingFallbackUnitCost: 1,
         proxyFirstByteTimeoutSec: 0,
         tokenRouterFailureCooldownMaxSec: 10,
+        tokenRouterFailureThreshold: 3,
+        tokenRouterFailureCooldownMinutes: 10,
         disableCrossProtocolFallback: false,
+        strictProtocolEndpoint: true,
       });
     } finally {
       root?.unmount();
@@ -231,7 +234,10 @@ describe('Settings route cooldown cap', () => {
         routingFallbackUnitCost: 1,
         proxyFirstByteTimeoutSec: 7,
         tokenRouterFailureCooldownMaxSec: 30 * 24 * 60 * 60,
+        tokenRouterFailureThreshold: 3,
+        tokenRouterFailureCooldownMinutes: 10,
         disableCrossProtocolFallback: false,
+        strictProtocolEndpoint: true,
       });
     } finally {
       root?.unmount();

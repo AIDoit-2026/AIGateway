@@ -60,6 +60,7 @@ type RuntimeSettings = {
   codexUpstreamWebsocketEnabled: boolean;
   responsesCompactFallbackToResponsesEnabled: boolean;
   disableCrossProtocolFallback: boolean;
+  strictProtocolEndpoint: boolean;
   proxySessionChannelConcurrencyLimit: number;
   proxySessionChannelQueueWaitMs: number;
   routingFallbackUnitCost: number;
@@ -344,6 +345,7 @@ export default function Settings() {
     codexUpstreamWebsocketEnabled: false,
     responsesCompactFallbackToResponsesEnabled: false,
     disableCrossProtocolFallback: false,
+    strictProtocolEndpoint: true,
     proxySessionChannelConcurrencyLimit: 2,
     proxySessionChannelQueueWaitMs: 1500,
     routingFallbackUnitCost: 1,
@@ -670,6 +672,9 @@ export default function Settings() {
         codexUpstreamWebsocketEnabled: !!runtimeInfo.codexUpstreamWebsocketEnabled,
         responsesCompactFallbackToResponsesEnabled: !!runtimeInfo.responsesCompactFallbackToResponsesEnabled,
         disableCrossProtocolFallback: !!runtimeInfo.disableCrossProtocolFallback,
+        strictProtocolEndpoint: runtimeInfo.strictProtocolEndpoint === undefined
+          ? true
+          : !!runtimeInfo.strictProtocolEndpoint,
         proxySessionChannelConcurrencyLimit: Number(runtimeInfo.proxySessionChannelConcurrencyLimit) >= 0
           ? Math.trunc(Number(runtimeInfo.proxySessionChannelConcurrencyLimit))
           : 2,
@@ -1044,6 +1049,7 @@ export default function Settings() {
         tokenRouterFailureThreshold: runtime.tokenRouterFailureThreshold,
         tokenRouterFailureCooldownMinutes: runtime.tokenRouterFailureCooldownMinutes,
         disableCrossProtocolFallback: runtime.disableCrossProtocolFallback,
+        strictProtocolEndpoint: runtime.strictProtocolEndpoint,
       });
       toast.success('Routing weights saved');
     } catch (err: any) {
@@ -2111,6 +2117,27 @@ export default function Settings() {
               {showAdvancedRouting ? '收起高级参数' : '展开高级参数'}
             </button>
           </div>
+
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={runtime.strictProtocolEndpoint}
+              onChange={(e) => setRuntime((prev) => ({
+                ...prev,
+                strictProtocolEndpoint: e.target.checked,
+              }))}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                上下游请求保持同协议
+              </span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.7 }}>
+                下游 /v1/messages 只发往上游 /v1/messages。上游不支持时直接报错并改换通道，不做协议转换，
+                避免提示缓存断点丢失而多花 token。仅在排查兼容问题时才建议关闭。
+              </span>
+            </span>
+          </label>
 
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
             <input

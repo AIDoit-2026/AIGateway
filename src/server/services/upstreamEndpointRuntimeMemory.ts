@@ -229,10 +229,24 @@ function shouldBlockEndpointByError(
   return isEndpointDowngradeError(status, errorText);
 }
 
+/**
+ * A `/v1/messages` downstream request is pinned to the native `/v1/messages`
+ * upstream endpoint in strict same-protocol mode, so endpoint memory can neither
+ * reorder nor block anything for it. Keeping the state would only create records
+ * that are never read and could steer later requests back into a silent
+ * cross-protocol conversion.
+ */
+function shouldTrackDownstreamEndpointMemory(
+  downstreamFormat: UpstreamEndpointRuntimePreference,
+): boolean {
+  return downstreamFormat !== 'claude';
+}
+
 function shouldRememberSuccessfulEndpoint(input: {
   endpoint: UpstreamEndpointRuntimeEndpoint;
   downstreamFormat: UpstreamEndpointRuntimePreference;
 }): boolean {
+  if (!shouldTrackDownstreamEndpointMemory(input.downstreamFormat)) return false;
   if (input.downstreamFormat !== 'responses') return true;
   return input.endpoint === 'responses';
 }
@@ -254,7 +268,8 @@ export function getUpstreamEndpointRuntimeStateSnapshot(input: {
     requestedModelHint: input.requestedModelHint,
     requestCapabilities: input.requestCapabilities,
   });
-  const enabled = shouldUseEndpointRuntimeMemory(capabilityProfile);
+  const enabled = shouldUseEndpointRuntimeMemory(capabilityProfile)
+    && shouldTrackDownstreamEndpointMemory(input.downstreamFormat);
   const stateKey = buildEndpointRuntimeStateKey({
     siteId: input.siteId,
     downstreamFormat: input.downstreamFormat,
@@ -294,6 +309,9 @@ export function applyUpstreamEndpointRuntimePreference(
   },
   nowMs = Date.now(),
 ): UpstreamEndpointRuntimeEndpoint[] {
+  if (!shouldTrackDownstreamEndpointMemory(input.downstreamFormat)) {
+    return candidates;
+  }
   if (!shouldUseEndpointRuntimeMemory(input.capabilityProfile)) {
     return candidates;
   }
@@ -399,6 +417,7 @@ export function recordUpstreamEndpointFailure(input: {
     requestedModelHint: input.requestedModelHint,
     requestCapabilities: input.requestCapabilities,
   });
+  if (!shouldTrackDownstreamEndpointMemory(input.downstreamFormat)) return null;
   if (!shouldUseEndpointRuntimeMemory(capabilityProfile)) return null;
   if (!shouldBlockEndpointByError(input.endpoint, input.status, input.errorText)) return null;
 
