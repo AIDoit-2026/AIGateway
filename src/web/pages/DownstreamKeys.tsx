@@ -1037,7 +1037,7 @@ export default function DownstreamKeys() {
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
           <h2 className="page-title">下游密钥</h2>
-          <div className="page-subtitle">统一管理分发给下游项目的密钥、主分组、标签、额度、模型白名单、群组范围与历史用量。</div>
+          <div className="page-subtitle">统一管理分发给下游项目的密钥、主分组、标签、额度、模型黑名单、群组范围与历史用量。模型规则为空时默认放通全部模型；规则以 ! 开头表示排除。</div>
         </div>
         <div className="page-actions">
           <RangeToggle range={range} onChange={setRange} />

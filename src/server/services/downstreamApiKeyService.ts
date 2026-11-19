@@ -313,9 +313,11 @@ export function isModelAllowedByPolicy(model: string, policy: DownstreamRoutingP
     ? policy.supportedModels
     : [];
 
-  if (patterns.length === 0) return true;
-
-  return patterns.some((pattern) => matchesDownstreamModelPattern(model, pattern));
+  const denyPatterns = patterns.filter((pattern) => pattern.trim().startsWith('!')).map((pattern) => pattern.trim().slice(1));
+  if (denyPatterns.some((pattern) => matchesDownstreamModelPattern(model, pattern))) return false;
+  const allowPatterns = patterns.filter((pattern) => !pattern.trim().startsWith('!'));
+  if (allowPatterns.length === 0) return true;
+  return allowPatterns.some((pattern) => matchesDownstreamModelPattern(model, pattern));
 }
 
 async function isModelMatchedByAllowedRoutes(model: string, allowedRouteIds: number[]): Promise<boolean> {
@@ -342,7 +344,11 @@ export async function isModelAllowedByPolicyOrAllowedRoutes(model: string, polic
   const hasPatternRules = patterns.length > 0;
   const hasRouteRules = allowedRouteIds.length > 0;
 
-  if (!hasPatternRules && !hasRouteRules) return policy.denyAllWhenEmpty === true ? false : true;
+  if (!hasPatternRules && !hasRouteRules) return true;
+
+  if (hasPatternRules && patterns.some((pattern) => pattern.trim().startsWith('!') && matchesDownstreamModelPattern(model, pattern.trim().slice(1)))) {
+    return false;
+  }
 
   if (hasPatternRules && patterns.some((pattern) => matchesDownstreamModelPattern(model, pattern))) {
     return true;

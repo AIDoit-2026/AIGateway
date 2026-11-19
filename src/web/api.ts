@@ -941,6 +941,7 @@ export const api = {
     request(
       `/api/stats/model-by-site?${siteId ? `siteId=${siteId}&` : ""}days=${days}`,
     ),
+  getAvailabilityStats: (days = 7) => request(`/api/stats/availability?days=${days}`),
 
   // Search
   search: (query: string) =>

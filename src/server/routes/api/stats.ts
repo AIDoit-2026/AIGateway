@@ -1977,6 +1977,43 @@ export async function statsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Querystring: { days?: string } }>(
+    "/api/stats/availability",
+    async (request) => {
+      const days = Math.min(90, Math.max(1, Number.parseInt(request.query.days || "7", 10) || 7));
+      const since = Date.now() - days * 24 * 60 * 60 * 1000;
+      const rows = await db.select({
+        createdAt: schema.proxyLogs.createdAt,
+        status: schema.proxyLogs.status,
+        model: schema.proxyLogs.modelActual,
+        requestedModel: schema.proxyLogs.modelRequested,
+        siteId: schema.accounts.siteId,
+        siteName: schema.sites.name,
+      }).from(schema.proxyLogs)
+        .leftJoin(schema.accounts, eq(schema.proxyLogs.accountId, schema.accounts.id))
+        .leftJoin(schema.sites, eq(schema.accounts.siteId, schema.sites.id)).all();
+      const buckets = new Map<string, { granularity: 'hour' | 'day'; siteId: number; siteName: string; model: string; period: string; total: number; success: number }>();
+      for (const row of rows) {
+        const time = parseStoredUtcDateTime(row.createdAt);
+        if (!time || time.getTime() < since || row.siteId == null) continue;
+        const model = String(row.model || row.requestedModel || 'unknown');
+        for (const granularity of ['hour', 'day'] as const) {
+          const bucket = new Date(time);
+          if (granularity === 'hour') bucket.setMinutes(0, 0, 0);
+          else bucket.setHours(0, 0, 0, 0);
+          const period = bucket.toISOString();
+          const key = `${granularity}:${row.siteId}:${model}:${period}`;
+          const current = buckets.get(key) || { granularity, siteId: row.siteId, siteName: String(row.siteName || row.siteId), model, period, total: 0, success: 0 };
+          current.total += 1;
+          if (String(row.status || '').toLowerCase() === 'success') current.success += 1;
+          buckets.set(key, current);
+        }
+      }
+      const map = (granularity: 'hour' | 'day') => Array.from(buckets.values()).filter((row) => row.granularity === granularity).map((row) => ({ ...row, availabilityPercent: Math.round((row.success / row.total) * 1000) / 10 }));
+      return { hours: map('hour'), days: map('day') };
+    },
+  );
+
   // Model stats by site
   app.get<{ Querystring: { siteId?: string; days?: string } }>(
     "/api/stats/model-by-site",
